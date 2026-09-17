@@ -1,11 +1,11 @@
 import io,os,sqlite3,time,tempfile,subprocess,zipfile,hmac,hashlib
 from pathlib import Path
+import bcrypt
 import requests
 from fastapi import FastAPI,UploadFile,File,Form,Request,HTTPException
 from fastapi.responses import StreamingResponse,HTMLResponse,JSONResponse
 from fastapi.staticfiles import StaticFiles
 from itsdangerous import URLSafeTimedSerializer
-from passlib.context import CryptContext
 from PIL import Image,ImageEnhance
 from pypdf import PdfReader,PdfWriter
 from pdf2image import convert_from_bytes
@@ -13,7 +13,6 @@ from pdf2image import convert_from_bytes
 APP=FastAPI(title="FileForge",version="6.0")
 DATA=Path(os.getenv("DATABASE","/data/fileforge.db"));DATA.parent.mkdir(parents=True,exist_ok=True)
 SECRET=os.getenv("SECRET_KEY","dev-secret");SER=URLSafeTimedSerializer(SECRET)
-PWD=CryptContext(schemes=["bcrypt"],deprecated="auto")
 ANON=int(os.getenv("ANON_DAILY_LIMIT","5"));USER=int(os.getenv("USER_DAILY_LIMIT","20"));PREM=int(os.getenv("PREMIUM_DAILY_LIMIT","200"));MAX=int(os.getenv("MAX_UPLOAD_MB","50"));PRICE=int(os.getenv("PREMIUM_PRICE_RUB","299"))
 APP.mount("/static",StaticFiles(directory="app/static"),name="static")
 
@@ -50,6 +49,17 @@ def im(b):
  try:return Image.open(io.BytesIO(b))
  except:raise HTTPException(400,"Некорректное изображение")
 
+def hash_password(password):
+ raw=password.encode("utf-8")
+ if len(raw)>72:raise HTTPException(400,"Пароль не должен быть длиннее 72 байт")
+ return bcrypt.hashpw(raw,bcrypt.gensalt()).decode("utf-8")
+
+def verify_password(password,password_hash):
+ raw=password.encode("utf-8")
+ if len(raw)>72:return False
+ try:return bcrypt.checkpw(raw,password_hash.encode("utf-8"))
+ except (ValueError,TypeError):return False
+
 @APP.get("/",response_class=HTMLResponse)
 def home():return Path("app/static/index.html").read_text(encoding="utf8")
 @APP.get("/robots.txt")
@@ -74,13 +84,13 @@ def register(req:Request,email:str=Form(...),password:str=Form(...)):
  if "@" not in email or len(password)<8:raise HTTPException(400,"Нужен email и пароль от 8 символов")
  try:
   with db() as c:
-   x=c.execute("INSERT INTO users(email,password_hash,created_at) VALUES(?,?,?)",(email,PWD.hash(password),int(time.time())));uid=x.lastrowid
+   x=c.execute("INSERT INTO users(email,password_hash,created_at) VALUES(?,?,?)",(email,hash_password(password),int(time.time())));uid=x.lastrowid
  except sqlite3.IntegrityError:raise HTTPException(409,"Пользователь уже существует")
  r=JSONResponse({"ok":True});r.set_cookie("ff_session",SER.dumps({"uid":uid}),httponly=True,samesite="lax",secure=os.getenv("COOKIE_SECURE","false").lower()=="true",max_age=2592000);return r
 @APP.post("/api/auth/login")
 def login(email:str=Form(...),password:str=Form(...)):
  with db() as c:u=c.execute("SELECT * FROM users WHERE email=?",(email.strip().lower(),)).fetchone()
- if not u or not PWD.verify(password,u["password_hash"]):raise HTTPException(401,"Неверные данные")
+ if not u or not verify_password(password,u["password_hash"]):raise HTTPException(401,"Неверные данные")
  r=JSONResponse({"ok":True});r.set_cookie("ff_session",SER.dumps({"uid":u["id"]}),httponly=True,samesite="lax",secure=os.getenv("COOKIE_SECURE","false").lower()=="true",max_age=2592000);return r
 @APP.post("/api/auth/logout")
 def logout():
