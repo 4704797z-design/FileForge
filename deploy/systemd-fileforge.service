@@ -1,0 +1,14 @@
+[Unit]
+Description=FileForge
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/fileforge
+ExecStart=/usr/bin/docker compose up -d --build
+ExecStop=/usr/bin/docker compose down
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

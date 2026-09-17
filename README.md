@@ -1,0 +1,212 @@
+# FileForge
+
+FileForge is a self-hosted web service for common image and document operations. It combines a FastAPI backend, a responsive browser UI, SQLite persistence, Docker deployment, and GitHub Actions CI/CD.
+
+**Current status:** development / self-hosted MVP. Core local file operations are implemented. Production payment processing, generative AI upscaling, and photo animation require real provider credentials and provider-specific contracts.
+
+## Features
+
+### Image tools
+- Smart Upscale ×2 / ×4. With an external AI adapter it forwards the image to the configured provider; otherwise it uses Pillow resize + sharpening. The fallback is **not generative AI**.
+- JPG / JPEG / PNG / WEBP conversion.
+- JPEG compression with configurable quality.
+
+### PDF / DJVU
+- PDF → PNG / JPG; multi-page results are returned as ZIP.
+- Images → PDF.
+- Merge multiple PDFs.
+- DJVU → PDF via `ddjvu`.
+- PDF → DJVU via `pdf2djvu`.
+
+### Accounts
+- Email/password registration and login.
+- Signed HTTP-only session cookie.
+- SQLite persistence.
+- Daily limits for guests, users and Premium users.
+
+### Premium / integrations
+- Premium order creation endpoint.
+- Payment webhook with optional HMAC verification.
+- Optional AI upscale adapter.
+- Optional photo-animation adapter.
+
+The application never fabricates a successful payment or AI result. Photo animation reports a configuration error until a real provider is configured.
+
+## Architecture
+
+```text
+Browser
+   │
+   ▼
+FastAPI / Uvicorn
+   ├── HTML / CSS / JS frontend
+   ├── Pillow
+   ├── pypdf
+   ├── pdf2image → Poppler
+   ├── ddjvu / pdf2djvu
+   └── SQLite → /data/fileforge.db
+```
+
+## Repository layout
+
+```text
+.
+├── .github/workflows/
+│   ├── ci.yml                    # tests, static checks, Docker build
+│   └── cd.yml                    # publishes tagged Docker images to GHCR
+├── app/
+│   ├── main.py                   # FastAPI application and API endpoints
+│   └── static/                   # frontend
+├── deploy/
+│   ├── nginx.conf
+│   └── systemd-fileforge.service
+├── tests/test_app.py
+├── Dockerfile
+├── docker-compose.yml
+├── .env.example
+├── .gitignore
+├── .dockerignore
+├── requirements.txt
+└── README.md
+```
+
+## Quick start — Windows PowerShell
+
+```powershell
+Copy-Item .env.example .env
+docker compose up --build
+```
+
+Open `http://localhost:8000`.
+
+For background mode:
+
+```powershell
+docker compose up -d --build
+docker compose logs -f
+```
+
+## Local Python development
+
+Python 3.12 is the reference runtime.
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn app.main:APP --reload --host 127.0.0.1 --port 8000
+```
+
+PDF/DJVU operations also require Poppler, DjVuLibre and `pdf2djvu` on the host. Docker provides the complete runtime.
+
+## Configuration
+
+Copy `.env.example` to `.env`. Before production, replace `SECRET_KEY` with a long random value.
+
+| Variable | Purpose |
+|---|---|
+| `SECRET_KEY` | Signs session cookies |
+| `DATABASE` | SQLite path |
+| `ANON_DAILY_LIMIT` | Guest operations/day |
+| `USER_DAILY_LIMIT` | Registered-user operations/day |
+| `PREMIUM_DAILY_LIMIT` | Premium operations/day |
+| `MAX_UPLOAD_MB` | Upload limit |
+| `PREMIUM_PRICE_RUB` | Premium price |
+| `COOKIE_SECURE` | Secure cookie flag |
+| `AI_UPSCALE_URL` / `AI_UPSCALE_TOKEN` | AI upscale provider |
+| `ANIMATION_API_URL` / `ANIMATION_API_TOKEN` | Photo animation provider |
+| `PAYMENT_API_URL` / `PAYMENT_API_TOKEN` | Payment provider |
+| `PAYMENT_WEBHOOK_SECRET` | Payment webhook HMAC secret |
+
+Never commit `.env`; it is ignored by Git.
+
+## API
+
+```text
+GET  /health
+GET  /api/config
+GET  /api/me
+POST /api/auth/register
+POST /api/auth/login
+POST /api/auth/logout
+POST /api/image/upscale
+POST /api/image/convert
+POST /api/image/compress
+POST /api/pdf/to-images
+POST /api/images/to-pdf
+POST /api/pdf/merge
+POST /api/djvu/to-pdf
+POST /api/pdf/to-djvu
+POST /api/photo/animate
+POST /api/premium/create
+POST /api/payment/webhook
+```
+
+## CI/CD
+
+### CI
+
+GitHub Actions runs on pushes to `main` and pull requests. It installs Python 3.12 plus Poppler/DJVU tools, runs Ruff, Python compilation, JavaScript syntax validation, pytest, and a Docker image build.
+
+### CD
+
+Pushing a tag matching `v*` publishes a Docker image to GitHub Container Registry:
+
+```text
+ghcr.io/<github-owner>/fileforge:<tag>
+ghcr.io/<github-owner>/fileforge:latest
+```
+
+Example:
+
+```bash
+git tag v6.0.0
+git push origin v6.0.0
+```
+
+No registry password is stored in the repository; GitHub's workflow token is used.
+
+## Testing
+
+```bash
+pip install -r requirements.txt
+pip install pytest ruff
+pytest -q
+ruff check app tests --select F
+python -m compileall -q app tests
+node --check app/static/app.js
+```
+
+The test suite covers health/home, registration/login sessions, image operations, PDF operations, DJVU/PDF conversion and invalid image handling.
+
+## Deployment
+
+On a VPS:
+
+```bash
+mkdir -p /opt/fileforge
+cd /opt/fileforge
+cp .env.example .env
+# edit .env
+
+docker compose up -d --build
+```
+
+Adapt `deploy/nginx.conf` for the real domain and TLS. `deploy/systemd-fileforge.service` is an example Docker Compose service wrapper.
+
+## Production checklist
+
+- Generate a strong random `SECRET_KEY`.
+- Set `COOKIE_SECURE=true` behind HTTPS.
+- Put the service behind TLS and a reverse proxy.
+- Add rate limiting and abuse protection.
+- Back up `/data/fileforge.db`.
+- Configure a real payment provider and verify its webhook schema, signature and replay/idempotency behavior.
+- Configure a real AI provider before marketing the Pillow fallback as AI.
+- Configure a real photo-animation provider before enabling that paid feature.
+- Replace privacy/terms templates with documents matching the actual operator, jurisdiction, retention policy and processors.
+- Add monitoring, alerting and log rotation.
+
+## License
+
+No open-source license is declared yet. Until a license is added, normal copyright applies.

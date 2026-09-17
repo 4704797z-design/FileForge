@@ -6,9 +6,14 @@ RUN apt-get update -o Acquire::Retries=5 && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
 COPY app ./app
+
 RUN mkdir -p /data
+
 EXPOSE 8000
+
 CMD ["uvicorn", "app.main:APP", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
