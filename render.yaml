@@ -20,14 +20,18 @@ services:
       - key: MAX_UPLOAD_MB
         value: "50"
       - key: PREMIUM_PRICE_RUB
-        value: "299"
-      - key: PAYMENT_PROVIDER
-        value: yookassa
-      - key: FAL_KEY
-        sync: false
-      - key: YOOKASSA_SHOP_ID
-        sync: false
-      - key: YOOKASSA_SECRET_KEY
-        sync: false
-      - key: PUBLIC_BASE_URL
-        sync: false
+        value: "999"
+      - key: PREMIUM_VIDEO_SECONDS
+        value: "30"
+      - key: FREE_VIDEO_TRIAL_SECONDS
+        value: "5"
+      - key: EMAIL_VERIFICATION_ENABLED
+        value: "false"
+      - key: REQUIRE_EMAIL_VERIFICATION
+        value: "false"
+      # Production secrets are intentionally added later in Render:
+      # FAL_KEY
+      # YOOKASSA_SHOP_ID
+      # YOOKASSA_SECRET_KEY
+      # PUBLIC_BASE_URL
+      # SMTP_*
