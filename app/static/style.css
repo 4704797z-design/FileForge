@@ -82,3 +82,4 @@ button:hover::after,.nav-cta:hover::after,.primary:hover::after{transform:transl
 .terms{display:flex;align-items:flex-start;gap:9px;color:#7f8799;font-size:11px;line-height:1.5;padding:2px 2px 4px}
 .terms input{width:auto!important;margin-top:2px}.terms a{color:#bcaeff;text-decoration:underline}
 .verify-hint{margin-top:10px;color:#8e7ff0;font-size:11px;line-height:1.6}
+.video-note{display:block;margin-top:10px;color:#6f7789;font-size:10px;line-height:1.5}.animation-card .video-note{position:relative;z-index:2}
