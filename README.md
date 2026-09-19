@@ -168,20 +168,26 @@ The source image is converted to a data URL for the provider request, so the MVP
 
 ### 5. Payment credentials
 
-The current repository has a **generic payment adapter**, not a finished YooMoney/YooKassa implementation.
+The repository now includes a server-side **YooKassa payment adapter**. This is the merchant checkout path; YooKassa's payment page can offer the payment methods enabled for the shop, and its documentation includes YooMoney as a supported payment method in test mode. citeturn7search0
 
-Therefore:
+Set:
 
-- `PAYMENT_PROVIDER` = the adapter name used by the deployed application.
-- `PAYMENT_API_URL` = the API endpoint of that adapter.
-- `PAYMENT_API_TOKEN` = the secret credential expected by that adapter.
-- `PAYMENT_WEBHOOK_SECRET` = a separate secret used to verify FileForge webhook signatures.
+- `PAYMENT_PROVIDER=yookassa`
+- `YOOKASSA_SHOP_ID` = Shop ID from the YooKassa merchant cabinet.
+- `YOOKASSA_SECRET_KEY` = secret API key from the merchant cabinet.
+- `PUBLIC_BASE_URL` = the public HTTPS origin of FileForge.
 
-Do **not** paste arbitrary YooMoney or YooKassa credentials into these fields and assume they will work. The provider implementation must match the provider's actual API.
+The backend creates a payment with an idempotency key, stores the YooKassa payment ID, redirects the customer to the returned `confirmation_url`, and grants Premium only after the server verifies a `payment.succeeded` webhook by querying YooKassa's API. It also checks the paid RUB amount against the local order and ignores duplicate paid orders. YooKassa documents the server-side API, idempotency key, redirect confirmation and `succeeded` status flow. citeturn7search0turn7search1
 
-For reference, YooKassa's current API uses a `shopId` plus a secret key for API authentication; the secret key is issued in the YooKassa merchant cabinet under **Integration → API keys**. citeturn0search0turn0search7
+Configure the YooKassa notification endpoint as:
 
-YooMoney's wallet API uses OAuth 2.0. A registered application can have a `client_id` and optionally a `client_secret`, and an authorization flow produces an `access_token`. Those values are not interchangeable with the generic FileForge payment adapter without implementing the corresponding YooMoney API flow. citeturn0search4turn0search5
+```text
+https://YOUR-DOMAIN/api/payment/webhook
+```
+
+Do not put the Shop ID/secret key in browser JavaScript.
+
+The old `PAYMENT_API_URL` / `PAYMENT_API_TOKEN` / `PAYMENT_WEBHOOK_SECRET` variables remain only as a compatibility path for a custom payment adapter.
 
 ### 6. Database and limits
 
@@ -236,7 +242,7 @@ Never send API keys, payment credentials, passwords, or private tokens through c
 | `AI_UPSCALE_URL` / `AI_UPSCALE_TOKEN` | AI upscale provider |
 | `ANIMATION_API_URL` / `ANIMATION_API_TOKEN` | Legacy generic animation adapter; not used by built-in Seedance |\n| `FAL_KEY` | Seedance 2.0 / fal.ai server-side API key |
 | `FAL_KEY` | Seedance/fal.ai server-side API key |
-| `PAYMENT_PROVIDER` | Payment adapter |
+| `PAYMENT_PROVIDER` | Payment adapter; use `yookassa` for the built-in checkout |\n| `YOOKASSA_SHOP_ID` | YooKassa merchant Shop ID |\n| `YOOKASSA_SECRET_KEY` | YooKassa server-side secret key |\n| `PUBLIC_BASE_URL` | Public HTTPS origin used as payment return URL |
 | `PAYMENT_API_URL` / `PAYMENT_API_TOKEN` | Payment adapter credentials |
 | `PAYMENT_WEBHOOK_SECRET` | Payment webhook HMAC secret |
 
