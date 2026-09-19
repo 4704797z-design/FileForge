@@ -69,6 +69,7 @@ def test_invalid_image_is_rejected(client):
 
 def test_animation_requires_provider(client, monkeypatch):
     monkeypatch.delenv("FAL_KEY", raising=False)
+    client.post("/api/auth/register", data={"email":"anim-provider@example.com","password":"password123","password_confirm":"password123","accept_terms":"true"})
     r = client.post("/api/photo/animate", files={"file":("test.png", png_bytes(), "image/png")}, data={"prompt":"slow camera movement"})
     assert r.status_code == 503
 
@@ -79,6 +80,7 @@ def test_animation_queue_and_status(client, monkeypatch):
     monkeypatch.setattr(main.seedance, "submit", lambda *args, **kwargs: "req-test-123")
     states = [{"status":"processing"}, {"status":"completed","video":{"url":"https://example.invalid/video.mp4","content_type":"video/mp4"},"seed":7}]
     monkeypatch.setattr(main.seedance, "status", lambda *args, **kwargs: states.pop(0))
+    client.post("/api/auth/register", data={"email":"anim-queue@example.com","password":"password123","password_confirm":"password123","accept_terms":"true"})
     payload = {"file":("test.png", png_bytes(), "image/png")}
     r = client.post("/api/photo/animate", files=payload, data={"prompt":"slow camera movement","duration":"5","resolution":"720p","aspect_ratio":"auto","generate_audio":"true"})
     assert r.status_code == 200
@@ -92,6 +94,7 @@ def test_animation_rejects_bad_options(client, monkeypatch):
     monkeypatch.setenv("FAL_KEY", "test-key")
     import app.main as main
     monkeypatch.setattr(main.seedance, "configured", lambda: True)
+    client.post("/api/auth/register", data={"email":"anim-options@example.com","password":"password123","password_confirm":"password123","accept_terms":"true"})
     r = client.post("/api/photo/animate", files={"file":("test.png", png_bytes(), "image/png")}, data={"prompt":"x","duration":"99"})
     assert r.status_code == 400
 
