@@ -288,6 +288,7 @@ def animation_download(token:str):
 def premium_create(req:Request):
  u=user(req)
  if not u:raise HTTPException(401,"Войдите в аккаунт")
+ if REQUIRE_EMAIL_VERIFICATION and not u["email_verified"]:raise HTTPException(403,"Для Premium подтвердите email")
  with db() as c:x=c.execute("INSERT INTO orders(user_id,amount,status,created_at) VALUES(?,?,?,?)",(u["id"],PRICE,"pending",int(time.time())));oid=x.lastrowid
  provider=os.getenv("PAYMENT_PROVIDER","manual").lower()
  if provider=="yookassa":
