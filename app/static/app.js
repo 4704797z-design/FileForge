@@ -28,9 +28,41 @@ async function animatePhoto(){
   throw Error("Генерация выполняется слишком долго. Попробуйте проверить позже.");
  }catch(e){toast(e.message)}
 }
-async function auth(url){let d=new FormData();d.append("email",$("email").value);d.append("password",$("pass").value);try{let r=await fetch(url,{method:"POST",body:d}),j=await r.json();if(!r.ok)throw Error(j.detail||"Ошибка");toast("✓ Готово");load()}catch(e){toast(e.message)}}
-async function load(){try{let j=await(await fetch("/api/me")).json();$("me").textContent=j.authenticated?`Вы вошли как ${j.email} · ${j.premium?"Premium":"Free"} · лимит ${j.limit}/день`:`Гость · доступно ${j.limit} операций в день`}catch{$("me").textContent="Не удалось проверить статус"}}
-async function buy(){try{let r=await fetch("/api/premium/create",{method:"POST"}),j=await r.json();if(!r.ok)throw Error(j.detail||"Ошибка");if(j.checkout_url)location.href=j.checkout_url;else toast("Платёжный провайдер пока не подключён")}catch(e){toast(e.message)}}
+let authMode="login";
+function setAuthMode(mode){
+ authMode=mode;
+ $("loginTab").classList.toggle("active",mode==="login");
+ $("registerTab").classList.toggle("active",mode==="register");
+ $("passConfirm").style.display=mode==="register"?"block":"none";
+ $("termsWrap").style.display=mode==="register"?"flex":"none";
+ $("authSubmit").innerHTML=mode==="register"?"Создать аккаунт <b>→</b>":"Войти <b>→</b>";
+}
+async function submitAuth(){
+ let d=new FormData(),email=$("email").value.trim(),password=$("pass").value;
+ if(!email||!password)return toast("Заполните email и пароль");
+ d.append("email",email);d.append("password",password);
+ const url=authMode==="register"?"/api/auth/register":"/api/auth/login";
+ if(authMode==="register"){d.append("password_confirm",$("passConfirm").value);d.append("accept_terms",$("terms").checked?"true":"false");}
+ try{
+  let r=await fetch(url,{method:"POST",body:d}),j=await r.json().catch(()=>({}));
+  if(!r.ok)throw Error(j.detail||"Ошибка");
+  if(authMode==="register"&&j.verification_sent)toast("✓ Аккаунт создан. Проверьте почту и подтвердите email.");
+  else toast(authMode==="register"?"✓ Аккаунт создан":"✓ Вы вошли");
+  setAuthMode("login");load();
+ }catch(e){toast(e.message)}
+}
+async function logout(){
+ try{let r=await fetch("/api/auth/logout",{method:"POST"});if(!r.ok)throw Error("Не удалось выйти");toast("Вы вышли из аккаунта");load()}catch(e){toast(e.message)}
+}
+async function load(){
+ try{
+  let j=await(await fetch("/api/me")).json();
+  if(!j.authenticated){$("me").textContent=`Гость · ${j.limit} обычных операций/день · AI-пробник ${j.video_trial_remaining} сек.`;$("verifyHint").textContent="";return;}
+  const video=j.premium?`AI-секунды: ${j.video_seconds_remaining} сек.`:`Пробник AI-видео: ${j.video_trial_remaining} сек.`;
+  $("me").textContent=`${j.email} · ${j.premium?"Premium":"Free"} · ${j.email_verified?"email подтверждён":"email не подтверждён"} · ${video}`;
+  $("verifyHint").textContent=!j.email_verified?"Для продакшена можно включить обязательное подтверждение email на сервере.":"";
+ }catch{$("me").textContent="Не удалось проверить статус"}
+}
 const observer=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add("visible");observer.unobserve(e.target)}}),{threshold:.08});document.querySelectorAll(".reveal").forEach(e=>observer.observe(e));
 ["up","conv","cmp","pdf","djvu","pdjvu","anim"].forEach(id=>{let el=$(id);if(!el)return;el.addEventListener("change",()=>{if(el.files?.[0])el.closest(".tool-card")?.classList.add("has-file")})});
 const q=$("quality"),qv=$("qualityValue");if(q&&qv){q.addEventListener("input",()=>qv.textContent=`${q.value}%`)}
