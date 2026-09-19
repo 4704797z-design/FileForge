@@ -9,6 +9,10 @@ def client(tmp_path, monkeypatch):
     db_path = tmp_path / "fileforge-test.db"
     monkeypatch.setenv("DATABASE", str(db_path))
     monkeypatch.setenv("SECRET_KEY", "test-secret-key-please-use-a-real-secret-in-production")
+    monkeypatch.setenv("EMAIL_VERIFICATION_ENABLED", "false")
+    monkeypatch.setenv("REQUIRE_EMAIL_VERIFICATION", "false")
+    monkeypatch.setenv("FREE_VIDEO_TRIAL_SECONDS", "5")
+    monkeypatch.setenv("PREMIUM_VIDEO_SECONDS", "30")
     monkeypatch.setenv("ANON_DAILY_LIMIT", "50")
     monkeypatch.setenv("USER_DAILY_LIMIT", "50")
     monkeypatch.setenv("PREMIUM_DAILY_LIMIT", "200")
@@ -31,7 +35,7 @@ def test_health_and_home(client):
     assert client.get("/api/config").status_code == 200
 
 def test_register_login_session(client):
-    r = client.post("/api/auth/register", data={"email":"test@example.com","password":"password123"})
+    r = client.post("/api/auth/register", data={"email":"test@example.com","password":"password123","password_confirm":"password123","accept_terms":"true"})
     assert r.status_code == 200
     assert client.get("/api/me").json()["authenticated"] is True
     client.post("/api/auth/logout")
@@ -96,8 +100,8 @@ def test_yookassa_payment_flow_is_verified_and_idempotent(client, monkeypatch):
     import app.main as main
     monkeypatch.setattr(main.yookassa, "configured", lambda: True)
     monkeypatch.setattr(main.yookassa, "create_payment", lambda order_id, amount: {"id":"pay-test-1","status":"pending","checkout_url":"https://pay.example/1"})
-    monkeypatch.setattr(main.yookassa, "get_payment", lambda payment_id: {"id":payment_id,"status":"succeeded","amount":{"value":"299.00","currency":"RUB"},"metadata":{"order_id":"1"}})
-    client.post("/api/auth/register", data={"email":"pay@example.com","password":"password123"})
+    monkeypatch.setattr(main.yookassa, "get_payment", lambda payment_id: {"id":payment_id,"status":"succeeded","amount":{"value":"999.00","currency":"RUB"},"metadata":{"order_id":"1"}})
+    client.post("/api/auth/register", data={"email":"pay@example.com","password":"password123","password_confirm":"password123","accept_terms":"true"})
     r = client.post("/api/premium/create")
     assert r.status_code == 200
     assert r.json()["checkout_url"] == "https://pay.example/1"
@@ -124,3 +128,35 @@ def test_seedance_submit_uses_fal_upload(monkeypatch):
     assert request_id == "req-upload-test"
     assert seen["model"] == "bytedance/seedance-2.0/fast/image-to-video"
     assert seen["arguments"]["image_url"] == "https://fal.example/input.png"
+
+def test_registration_requires_password_confirmation_and_terms(client):
+    r = client.post("/api/auth/register", data={"email":"bad@example.com","password":"password123","password_confirm":"nope","accept_terms":"false"})
+    assert r.status_code == 400
+    assert "Пароли не совпадают" in r.json()["detail"]
+
+def test_free_video_trial_is_limited_and_account_required(client, monkeypatch):
+    monkeypatch.setenv("FAL_KEY", "test-key")
+    import app.main as main
+    monkeypatch.setattr(main.seedance, "configured", lambda: True)
+    monkeypatch.setattr(main.seedance, "submit", lambda *args, **kwargs: "req-free")
+    client.post("/api/auth/register", data={"email":"free@example.com","password":"password123","password_confirm":"password123","accept_terms":"true"})
+    r = client.post("/api/photo/animate", files={"file":("test.png",png_bytes(),"image/png")}, data={"prompt":"slow camera movement","duration":"5","resolution":"720p","aspect_ratio":"auto","generate_audio":"false"})
+    assert r.status_code == 200
+    r = client.post("/api/photo/animate", files={"file":("test.png",png_bytes(),"image/png")}, data={"prompt":"slow camera movement","duration":"5","resolution":"720p","aspect_ratio":"auto","generate_audio":"false"})
+    assert r.status_code == 402
+
+def test_verify_email_flow(client, monkeypatch):
+    monkeypatch.setenv("EMAIL_VERIFICATION_ENABLED", "true")
+    monkeypatch.setenv("REQUIRE_EMAIL_VERIFICATION", "true")
+    import app.main as main
+    sent = {}
+    monkeypatch.setattr(main, "send_verification_email", lambda email, token: sent.update({"email":email,"token":token}) or True)
+    r = client.post("/api/auth/register", data={"email":"verify@example.com","password":"password123","password_confirm":"password123","accept_terms":"true"})
+    assert r.status_code == 200
+    client.post("/api/auth/logout")
+    r = client.post("/api/auth/login", data={"email":"verify@example.com","password":"password123"})
+    assert r.status_code == 403
+    r = client.get("/api/auth/verify", params={"token":sent["token"]})
+    assert r.status_code == 200
+    r = client.post("/api/auth/login", data={"email":"verify@example.com","password":"password123"})
+    assert r.status_code == 200
