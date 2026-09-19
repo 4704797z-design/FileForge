@@ -1,5 +1,5 @@
-import base64
 import os
+import tempfile
 
 import fal_client
 
@@ -13,11 +13,6 @@ ASPECT_RATIOS = {"auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"}
 
 def configured() -> bool:
     return bool(os.getenv("FAL_KEY"))
-
-
-def image_data_url(data: bytes, content_type: str | None) -> str:
-    mime = content_type if content_type in {"image/jpeg", "image/png", "image/webp"} else "image/jpeg"
-    return f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
 
 
 def validate_options(prompt: str, duration: str, resolution: str, aspect_ratio: str) -> None:
@@ -45,7 +40,11 @@ def submit(data: bytes, content_type: str | None, prompt: str, duration: str,
     if not configured():
         raise RuntimeError("Seedance provider is not configured")
     validate_options(prompt, duration, resolution, aspect_ratio)
-    image_url = image_data_url(data, content_type)
+    suffix = ".jpg" if content_type == "image/jpeg" else ".png" if content_type == "image/png" else ".webp"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as tmp:
+        tmp.write(data)
+        tmp.flush()
+        image_url = fal_client.upload_file(tmp.name)
     arguments = {
         "prompt": prompt.strip(),
         "image_url": image_url,
