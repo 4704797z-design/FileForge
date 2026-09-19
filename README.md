@@ -2,7 +2,7 @@
 
 FileForge is a self-hosted web service for common image and document operations. It combines a FastAPI backend, a responsive browser UI, SQLite persistence, Docker deployment, and GitHub Actions CI/CD.
 
-**Current status:** development / self-hosted MVP. Core local file operations are implemented. Production payment processing, generative AI upscaling, and photo animation require real provider credentials and provider-specific contracts.
+**Current status:** development / self-hosted MVP. Core local file operations are implemented. Production payment processing and external AI services require real provider credentials. Photo animation is integrated with Seedance 2.0 through fal.ai and becomes live when `FAL_KEY` is configured.
 
 ## Features
 
@@ -28,9 +28,9 @@ FileForge is a self-hosted web service for common image and document operations.
 - Premium order creation endpoint.
 - Payment webhook with optional HMAC verification.
 - Optional AI upscale adapter.
-- Optional photo-animation adapter.
+- Seedance 2.0 photo animation through fal.ai queue API.
 
-The application never fabricates a successful payment or AI result. Photo animation reports a configuration error until a real provider is configured.
+The application never fabricates a successful payment or AI result. Seedance reports a configuration error until `FAL_KEY` is configured.
 
 ## Architecture
 
@@ -149,14 +149,22 @@ The token belongs only on the backend. Do not put it into `app/static/`, HTML, o
 
 ### 4. Photo-animation provider credentials
 
-For the currently generic animation adapter:
+Seedance 2.0 is now the built-in photo-animation provider. The backend submits a queued job through fal.ai, stores the request ID in SQLite, and exposes a status endpoint until the video is ready. The browser never receives `FAL_KEY`. fal recommends the queue approach for long-running generations and documents the Seedance image-to-video endpoint and Python client. citeturn5search3turn4search8turn3search0
 
-- `ANIMATION_API_URL` = provider endpoint that matches the adapter's expected request format.
-- `ANIMATION_API_TOKEN` = provider's server-side secret token.
+The UI sends:
 
-Do not guess these values. They depend on the provider-specific API contract.
+- the source JPEG/PNG/WEBP image;
+- a motion prompt;
+- duration from 4–15 seconds;
+- resolution 480p/720p/1080p;
+- aspect ratio;
+- optional synchronized audio.
 
-For Seedance 2.0 through fal.ai, use `FAL_KEY` with the dedicated Seedance/fal integration rather than filling these generic variables with unrelated values. The official Seedance documentation describes the queue API, file handling, and model endpoint. citeturn1search0
+The current implementation uses the Fast Seedance endpoint for 480p/720p and the standard endpoint for 1080p. The provider currently documents separate per-second pricing for these tiers, so the application should not hard-code a single universal generation cost. citeturn5search0turn5search8
+
+For the old generic adapter, `ANIMATION_API_URL` / `ANIMATION_API_TOKEN` remain in the configuration only for compatibility. They are not used by the built-in Seedance path.
+
+The source image is converted to a data URL for the provider request, so the MVP does not need to expose a public URL for the user's uploaded image. Seedance accepts JPEG, PNG and WebP starting images up to 30 MB. citeturn5search3 citeturn1search0
 
 ### 5. Payment credentials
 
@@ -226,7 +234,7 @@ Never send API keys, payment credentials, passwords, or private tokens through c
 | `PREMIUM_PRICE_RUB` | Premium price |
 | `COOKIE_SECURE` | Secure cookie flag |
 | `AI_UPSCALE_URL` / `AI_UPSCALE_TOKEN` | AI upscale provider |
-| `ANIMATION_API_URL` / `ANIMATION_API_TOKEN` | Generic photo-animation provider |
+| `ANIMATION_API_URL` / `ANIMATION_API_TOKEN` | Legacy generic animation adapter; not used by built-in Seedance |\n| `FAL_KEY` | Seedance 2.0 / fal.ai server-side API key |
 | `FAL_KEY` | Seedance/fal.ai server-side API key |
 | `PAYMENT_PROVIDER` | Payment adapter |
 | `PAYMENT_API_URL` / `PAYMENT_API_TOKEN` | Payment adapter credentials |
@@ -250,6 +258,8 @@ POST /api/pdf/merge
 POST /api/djvu/to-pdf
 POST /api/pdf/to-djvu
 POST /api/photo/animate
+GET  /api/photo/animate/{token}
+GET  /api/photo/animate/{token}/download
 POST /api/premium/create
 POST /api/payment/webhook
 ```
@@ -289,7 +299,7 @@ python -m compileall -q app tests
 node --check app/static/app.js
 ```
 
-The test suite covers health/home, registration/login sessions, image operations, PDF operations, DJVU/PDF conversion and invalid image handling.
+The test suite covers health/home, registration/login sessions, image operations, PDF operations, DJVU/PDF conversion, invalid image handling, Seedance configuration failures, Seedance queue/status flow with mocked provider calls, and invalid generation options.
 
 ## Deployment
 
