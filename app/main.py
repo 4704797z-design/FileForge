@@ -78,7 +78,7 @@ def send_verification_email(email,token):
  if not(host and user_name and password and sender and base):raise RuntimeError("Email verification is enabled but SMTP/PUBLIC_BASE_URL is not fully configured")
  port=int(os.getenv("SMTP_PORT","587"));link=f"{base}/api/auth/verify?token={token}"
  msg=EmailMessage();msg["Subject"]="Подтверждение email — FileForge";msg["From"]=sender;msg["To"]=email
- msg.set_content(f"Здравствуйте!\\n\\nПодтвердите email для FileForge, перейдя по ссылке:\\n{link}\\n\\nСсылка действует 24 часа. Если это были не вы, просто проигнорируйте письмо.")
+ msg.set_content(f"Здравствуйте!\n\nПодтвердите email для FileForge, перейдя по ссылке:\n{link}\n\nСсылка действует 24 часа. Если это были не вы, просто проигнорируйте письмо.")
  with smtplib.SMTP(host,port,timeout=20) as smtp:
   smtp.starttls();smtp.login(user_name,password);smtp.send_message(msg)
  return True
@@ -91,13 +91,12 @@ def video_cost_seconds(duration,resolution):
  multiplier=3 if resolution=="1080p" else 1
  return seconds*multiplier
 
-def grant_premium(user_id):
+def grant_premium(c,user_id):
  now=int(time.time())
- with db() as c:
-  u=c.execute("SELECT premium_until FROM users WHERE id=?",(user_id,)).fetchone()
-  base=max(now,int(u["premium_until"] or 0)) if u else now
-  until=base+30*24*3600
-  c.execute("UPDATE users SET premium=1,premium_until=?,video_seconds_balance=video_seconds_balance+? WHERE id=?",(until,PREMIUM_VIDEO_SECONDS,user_id))
+ u=c.execute("SELECT premium_until FROM users WHERE id=?",(user_id,)).fetchone()
+ base=max(now,int(u["premium_until"] or 0)) if u else now
+ until=base+30*24*3600
+ c.execute("UPDATE users SET premium=1,premium_until=?,video_seconds_balance=video_seconds_balance+? WHERE id=?",(until,PREMIUM_VIDEO_SECONDS,user_id))
 
 @APP.get("/",response_class=HTMLResponse)
 def home():return Path("app/static/index.html").read_text(encoding="utf8")
@@ -327,7 +326,7 @@ async def webhook(req:Request):
    if o["status"]=="paid":return {"ok":True,"idempotent":True}
    if str(paid_amount.get("currency"))!="RUB" or float(paid_amount.get("value",0)) != float(o["amount"]):
     raise HTTPException(400,"Payment amount mismatch")
-   grant_premium(o["user_id"]) ;c.execute("UPDATE orders SET status='paid',paid_at=? WHERE id=?",(int(time.time()),oid))
+   grant_premium(c,o["user_id"]);c.execute("UPDATE orders SET status='paid',paid_at=? WHERE id=?",(int(time.time()),oid))
   return {"ok":True}
  secret=os.getenv("PAYMENT_WEBHOOK_SECRET","");signature=req.headers.get("X-FileForge-Signature","")
  if secret:
