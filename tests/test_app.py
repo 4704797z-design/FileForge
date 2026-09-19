@@ -107,3 +107,20 @@ def test_yookassa_payment_flow_is_verified_and_idempotent(client, monkeypatch):
     r = client.post("/api/payment/webhook", json={"event":"payment.succeeded","object":{"id":"pay-test-1"}})
     assert r.status_code == 200
     assert r.json()["idempotent"] is True
+
+def test_seedance_submit_uses_fal_upload(monkeypatch):
+    import app.services.seedance as seedance
+    monkeypatch.setenv("FAL_KEY", "test-key")
+    monkeypatch.setattr(seedance.fal_client, "upload_file", lambda path: "https://fal.example/input.png")
+    class Handle:
+        request_id = "req-upload-test"
+    seen = {}
+    def fake_submit(model, arguments):
+        seen["model"] = model
+        seen["arguments"] = arguments
+        return Handle()
+    monkeypatch.setattr(seedance.fal_client, "submit", fake_submit)
+    request_id = seedance.submit(png_bytes(), "image/png", "slow camera movement", "5", "720p", "auto", True)
+    assert request_id == "req-upload-test"
+    assert seen["model"] == "bytedance/seedance-2.0/fast/image-to-video"
+    assert seen["arguments"]["image_url"] == "https://fal.example/input.png"
