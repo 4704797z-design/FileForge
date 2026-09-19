@@ -64,6 +64,8 @@ def status(request_id: str, resolution: str) -> dict:
     name = s.__class__.__name__.lower()
     result = {"status": "processing" if name == "inprogress" else "queued"}
     if name == "completed":
+        if getattr(s, "error", None):
+            return {"status": "failed", "error": str(s.error)}
         result["status"] = "completed"
         output = fal_client.result(model, request_id)
         video = output.get("video") if isinstance(output, dict) else None
