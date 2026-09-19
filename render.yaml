@@ -26,12 +26,15 @@ services:
       - key: FREE_VIDEO_TRIAL_SECONDS
         value: "5"
       - key: EMAIL_VERIFICATION_ENABLED
-        value: "false"
+        value: "true"
       - key: REQUIRE_EMAIL_VERIFICATION
-        value: "false"
+        value: "true"
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
       # Production secrets are intentionally added later in Render:
       # FAL_KEY
       # YOOKASSA_SHOP_ID
       # YOOKASSA_SECRET_KEY
       # PUBLIC_BASE_URL
-      # SMTP_*
