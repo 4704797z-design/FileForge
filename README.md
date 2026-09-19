@@ -92,16 +92,128 @@ Python 3.12 is the reference runtime.
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\Activate.ps1
+.venv\\Scripts\\Activate.ps1
 pip install -r requirements.txt
 uvicorn app.main:APP --reload --host 127.0.0.1 --port 8000
 ```
 
 PDF/DJVU operations also require Poppler, DjVuLibre and `pdf2djvu` on the host. Docker provides the complete runtime.
 
-## Configuration
+## Configuration and secret setup
 
-Copy `.env.example` to `.env`. Before production, replace `SECRET_KEY` with a long random value.
+Copy `.env.example` to `.env`. The example file contains a detailed setup guide because the application requires several server-side credentials.
+
+### 1. Application secret — `SECRET_KEY`
+
+This signs the application's login/session cookies.
+
+Generate it locally instead of inventing one:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Copy the output into:
+
+```text
+SECRET_KEY=...
+```
+
+Use a different value for every real deployment.
+
+### 2. fal.ai / Seedance — `FAL_KEY`
+
+Seedance 2.0 is available through fal.ai. The official Seedance API uses the model endpoint `bytedance/seedance-2.0/image-to-video`, and fal documents `FAL_KEY` as the server-side API credential. The image-to-video API accepts an image URL plus a motion prompt and supports configurable duration/resolution. citeturn1search0turn2search12
+
+To obtain the key:
+
+1. Create or sign in to a fal.ai account.
+2. Open the developer/API key dashboard.
+3. Create a new API key.
+4. Copy the key.
+5. Put it into the server-side `.env` as `FAL_KEY=...`.
+6. Never expose the key to browser JavaScript or commit it to Git.
+
+fal's documentation explicitly recommends keeping `FAL_KEY` in the runtime environment and not exposing it client-side. citeturn0search1turn2search5
+
+The current generic `ANIMATION_API_URL` / `ANIMATION_API_TOKEN` adapter is **not automatically compatible with fal's Seedance API**: fal's Seedance integration has its own upload/queue contract. The dedicated Seedance adapter must use that contract rather than pretending a fal key is a generic multipart-provider token. citeturn1search0
+
+### 3. AI upscale credentials
+
+If an external AI-upscale provider is selected:
+
+- `AI_UPSCALE_URL` = the exact API endpoint from that provider's developer documentation.
+- `AI_UPSCALE_TOKEN` = the provider's secret API token.
+
+The token belongs only on the backend. Do not put it into `app/static/`, HTML, or browser JavaScript.
+
+### 4. Photo-animation provider credentials
+
+For the currently generic animation adapter:
+
+- `ANIMATION_API_URL` = provider endpoint that matches the adapter's expected request format.
+- `ANIMATION_API_TOKEN` = provider's server-side secret token.
+
+Do not guess these values. They depend on the provider-specific API contract.
+
+For Seedance 2.0 through fal.ai, use `FAL_KEY` with the dedicated Seedance/fal integration rather than filling these generic variables with unrelated values. The official Seedance documentation describes the queue API, file handling, and model endpoint. citeturn1search0
+
+### 5. Payment credentials
+
+The current repository has a **generic payment adapter**, not a finished YooMoney/YooKassa implementation.
+
+Therefore:
+
+- `PAYMENT_PROVIDER` = the adapter name used by the deployed application.
+- `PAYMENT_API_URL` = the API endpoint of that adapter.
+- `PAYMENT_API_TOKEN` = the secret credential expected by that adapter.
+- `PAYMENT_WEBHOOK_SECRET` = a separate secret used to verify FileForge webhook signatures.
+
+Do **not** paste arbitrary YooMoney or YooKassa credentials into these fields and assume they will work. The provider implementation must match the provider's actual API.
+
+For reference, YooKassa's current API uses a `shopId` plus a secret key for API authentication; the secret key is issued in the YooKassa merchant cabinet under **Integration → API keys**. citeturn0search0turn0search7
+
+YooMoney's wallet API uses OAuth 2.0. A registered application can have a `client_id` and optionally a `client_secret`, and an authorization flow produces an `access_token`. Those values are not interchangeable with the generic FileForge payment adapter without implementing the corresponding YooMoney API flow. citeturn0search4turn0search5
+
+### 6. Database and limits
+
+These normally do not require secrets:
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE` | SQLite database path |
+| `ANON_DAILY_LIMIT` | Guest operations/day |
+| `USER_DAILY_LIMIT` | Registered-user operations/day |
+| `PREMIUM_DAILY_LIMIT` | Premium operations/day |
+| `MAX_UPLOAD_MB` | Upload limit |
+| `PREMIUM_PRICE_RUB` | Premium price |
+| `COOKIE_SECURE` | Secure-cookie flag; use `true` behind HTTPS |
+
+### Important `.env` rule
+
+The repository intentionally ignores the real `.env`.
+
+The workflow is:
+
+```text
+.env.example
+     │
+     ├── copy
+     ▼
+   .env
+     │
+     ├── insert real secrets locally/server-side
+     ├── test
+     └── NEVER commit/upload
+```
+
+**After all keys have been entered, delete the instructional comments from the real `.env`.**
+
+Keep `.env.example` in Git with empty placeholders so another developer can understand the configuration without receiving any secrets.
+
+Never send API keys, payment credentials, passwords, or private tokens through chat, issues, pull requests, screenshots, or source code.
+
+## Configuration reference
 
 | Variable | Purpose |
 |---|---|
@@ -114,11 +226,11 @@ Copy `.env.example` to `.env`. Before production, replace `SECRET_KEY` with a lo
 | `PREMIUM_PRICE_RUB` | Premium price |
 | `COOKIE_SECURE` | Secure cookie flag |
 | `AI_UPSCALE_URL` / `AI_UPSCALE_TOKEN` | AI upscale provider |
-| `ANIMATION_API_URL` / `ANIMATION_API_TOKEN` | Photo animation provider |
-| `PAYMENT_API_URL` / `PAYMENT_API_TOKEN` | Payment provider |
+| `ANIMATION_API_URL` / `ANIMATION_API_TOKEN` | Generic photo-animation provider |
+| `FAL_KEY` | Seedance/fal.ai server-side API key |
+| `PAYMENT_PROVIDER` | Payment adapter |
+| `PAYMENT_API_URL` / `PAYMENT_API_TOKEN` | Payment adapter credentials |
 | `PAYMENT_WEBHOOK_SECRET` | Payment webhook HMAC secret |
-
-Never commit `.env`; it is ignored by Git.
 
 ## API
 
@@ -187,12 +299,13 @@ On a VPS:
 mkdir -p /opt/fileforge
 cd /opt/fileforge
 cp .env.example .env
-# edit .env
-
+# edit .env and insert the real server-side credentials
 docker compose up -d --build
 ```
 
 Adapt `deploy/nginx.conf` for the real domain and TLS. `deploy/systemd-fileforge.service` is an example Docker Compose service wrapper.
+
+For production, keep the real `.env` only on the server and make sure it is not part of the Git working tree being committed.
 
 ## Production checklist
 
