@@ -9,7 +9,7 @@ from itsdangerous import URLSafeTimedSerializer
 from PIL import Image,ImageEnhance
 from pypdf import PdfReader,PdfWriter
 from pdf2image import convert_from_bytes
-from app.services import seedance,yookassa
+from app.services import seedance,yookassa,email as email_service
 
 APP=FastAPI(title="FileForge",version="6.0")
 DATA=Path(os.getenv("DATABASE","/data/fileforge.db"));DATA.parent.mkdir(parents=True,exist_ok=True)
@@ -72,15 +72,9 @@ def token_hash(token):
 
 def send_verification_email(email,token):
  if not EMAIL_VERIFICATION_ENABLED:return False
- import smtplib
- from email.message import EmailMessage
- host=os.getenv("SMTP_HOST","").strip();user_name=os.getenv("SMTP_USER","").strip();password=os.getenv("SMTP_PASSWORD","");sender=os.getenv("SMTP_FROM",user_name).strip();base=os.getenv("PUBLIC_BASE_URL","").rstrip("/")
- if not(host and user_name and password and sender and base):raise RuntimeError("Email verification is enabled but SMTP/PUBLIC_BASE_URL is not fully configured")
- port=int(os.getenv("SMTP_PORT","587"));link=f"{base}/api/auth/verify?token={token}"
- msg=EmailMessage();msg["Subject"]="Подтверждение email — FileForge";msg["From"]=sender;msg["To"]=email
- msg.set_content(f"Здравствуйте!\n\nПодтвердите email для FileForge, перейдя по ссылке:\n{link}\n\nСсылка действует 24 часа. Если это были не вы, просто проигнорируйте письмо.")
- with smtplib.SMTP(host,port,timeout=20) as smtp:
-  smtp.starttls();smtp.login(user_name,password);smtp.send_message(msg)
+ base=os.getenv("PUBLIC_BASE_URL","").rstrip("/")
+ if not base or not email_service.configured():raise RuntimeError("Email verification requires RESEND_API_KEY, RESEND_FROM_EMAIL and PUBLIC_BASE_URL")
+ email_service.send_verification(email,token,base)
  return True
 
 def premium_active(u):
@@ -142,6 +136,19 @@ def verify_email(token:str):
  if not u:return HTMLResponse("<h2>Ссылка недействительна или истекла.</h2>",status_code=400)
  with db() as c:c.execute("UPDATE users SET email_verified=1,verification_token_hash=NULL,verification_expires_at=NULL WHERE id=?",(u["id"],))
  return HTMLResponse("<script>location.href='/?verified=1#account'</script><p>Email подтверждён. Вернитесь в FileForge.</p>")
+@APP.post("/api/auth/resend-verification")
+def resend_verification(req:Request):
+ u=user(req)
+ if not u:raise HTTPException(401,"Войдите в аккаунт")
+ if u["email_verified"]:return {"ok":True,"already_verified":True}
+ if not EMAIL_VERIFICATION_ENABLED:raise HTTPException(503,"Email verification is disabled")
+ token=secrets.token_urlsafe(32);now=int(time.time())
+ with db() as c:
+  c.execute("UPDATE users SET verification_token_hash=?,verification_expires_at=? WHERE id=?",(token_hash(token),now+24*3600,u["id"]))
+ try:send_verification_email(u["email"],token)
+ except Exception as e:raise HTTPException(502,"Не удалось отправить письмо подтверждения") from e
+ return {"ok":True,"verification_sent":True}
+
 @APP.post("/api/auth/login")
 def login(email:str=Form(...),password:str=Form(...)):
  with db() as c:u=c.execute("SELECT * FROM users WHERE email=?",(email.strip().lower(),)).fetchone()
