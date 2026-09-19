@@ -62,3 +62,31 @@ def test_pdf_operations(client):
 def test_invalid_image_is_rejected(client):
     r = client.post("/api/image/convert", files={"file":("bad.txt",b"not an image","text/plain")}, data={"fmt":"png"})
     assert r.status_code == 400
+
+def test_animation_requires_provider(client, monkeypatch):
+    monkeypatch.delenv("FAL_KEY", raising=False)
+    r = client.post("/api/photo/animate", files={"file":("test.png", png_bytes(), "image/png")}, data={"prompt":"slow camera movement"})
+    assert r.status_code == 503
+
+def test_animation_queue_and_status(client, monkeypatch):
+    monkeypatch.setenv("FAL_KEY", "test-key")
+    import app.main as main
+    monkeypatch.setattr(main.seedance, "configured", lambda: True)
+    monkeypatch.setattr(main.seedance, "submit", lambda *args, **kwargs: "req-test-123")
+    states = [{"status":"processing"}, {"status":"completed","video":{"url":"https://example.invalid/video.mp4","content_type":"video/mp4"},"seed":7}]
+    monkeypatch.setattr(main.seedance, "status", lambda *args, **kwargs: states.pop(0))
+    payload = {"file":("test.png", png_bytes(), "image/png")}
+    r = client.post("/api/photo/animate", files=payload, data={"prompt":"slow camera movement","duration":"5","resolution":"720p","aspect_ratio":"auto","generate_audio":"true"})
+    assert r.status_code == 200
+    token = r.json()["token"]
+    assert client.get(f"/api/photo/animate/{token}").json()["status"] == "processing"
+    result = client.get(f"/api/photo/animate/{token}").json()
+    assert result["status"] == "completed"
+    assert result["video"]["url"].startswith("https://")
+
+def test_animation_rejects_bad_options(client, monkeypatch):
+    monkeypatch.setenv("FAL_KEY", "test-key")
+    import app.main as main
+    monkeypatch.setattr(main.seedance, "configured", lambda: True)
+    r = client.post("/api/photo/animate", files={"file":("test.png", png_bytes(), "image/png")}, data={"prompt":"x","duration":"99"})
+    assert r.status_code == 400
