@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: fileforge
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/config
+    envVars:
+      - key: DATABASE
+        value: /data/fileforge.db
+      - key: SECRET_KEY
+        generateValue: true
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: ANON_DAILY_LIMIT
+        value: "5"
+      - key: USER_DAILY_LIMIT
+        value: "20"
+      - key: PREMIUM_DAILY_LIMIT
+        value: "200"
+      - key: MAX_UPLOAD_MB
+        value: "50"
+      - key: PREMIUM_PRICE_RUB
+        value: "299"
+      - key: PAYMENT_PROVIDER
+        value: yookassa
+      - key: FAL_KEY
+        sync: false
+      - key: YOOKASSA_SHOP_ID
+        sync: false
+      - key: YOOKASSA_SECRET_KEY
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
