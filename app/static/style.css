@@ -60,3 +60,25 @@ footer .brand{font-size:18px}
   .tool-card button,.auth button,.price button{font-size:14px}
   .premium{padding:32px}
 }
+
+/* Stronger interaction states */
+button,.nav a,.tool-card input,.tool-card select,.auth input,.auth-tab{cursor:pointer}
+button{position:relative;overflow:hidden}
+button::after,.nav-cta::after,.primary::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 25%,rgba(255,255,255,.22) 50%,transparent 75%);transform:translateX(-130%);transition:transform .55s ease;pointer-events:none}
+button:hover::after,.nav-cta:hover::after,.primary:hover::after{transform:translateX(130%)}
+.tool-card::after{content:"";position:absolute;inset:-45%;background:radial-gradient(circle at 50% 0,rgba(155,123,255,.18),transparent 42%);opacity:0;transition:opacity .35s ease;pointer-events:none}
+.tool-card:hover::after{opacity:1}
+.tool-card:hover{border-color:rgba(155,123,255,.55);box-shadow:0 25px 70px rgba(78,51,160,.22),0 0 0 1px rgba(155,123,255,.08) inset}
+.tool-card button:hover,.price button:hover,.auth>button:hover,.auth-tab:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(155,123,255,.22)}
+.tool-card button:active,.price button:active,.auth>button:active{transform:translateY(0) scale(.985)}
+.tool-card input[type=file]::file-selector-button{margin-right:8px;border:1px solid rgba(155,123,255,.22);background:rgba(155,123,255,.09);color:#ececff;border-radius:7px;padding:8px 10px;font-weight:700;cursor:pointer;transition:.2s}
+.tool-card input[type=file]::file-selector-button:hover{background:rgba(155,123,255,.18);border-color:rgba(155,123,255,.5)}
+.tool-card select:hover,.tool-card input:hover{border-color:rgba(155,123,255,.38);color:#f5f6fb}
+.tool-card select:focus-visible,.tool-card input:focus-visible,.auth input:focus-visible,.auth-tab:focus-visible,button:focus-visible,.nav a:focus-visible{outline:2px solid rgba(155,123,255,.7);outline-offset:3px}
+.nav nav a{position:relative;transition:color .2s ease,text-shadow .2s ease}.nav nav a::after{content:"";position:absolute;left:0;right:0;bottom:-7px;height:1px;background:var(--purple);transform:scaleX(0);transform-origin:left;transition:transform .2s ease}.nav nav a:hover{color:#fff;text-shadow:0 0 16px rgba(155,123,255,.45)}.nav nav a:hover::after{transform:scaleX(1)}
+.auth-switch{display:flex;gap:7px;padding:4px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.025);margin-bottom:2px}
+.auth-tab{margin:0!important;background:transparent!important;color:#7f8799!important;border:0!important;border-radius:8px!important;box-shadow:none!important;padding:10px 12px!important;transform:none!important}
+.auth-tab.active{background:rgba(155,123,255,.13)!important;color:#fff!important;box-shadow:0 0 22px rgba(155,123,255,.12)!important}
+.terms{display:flex;align-items:flex-start;gap:9px;color:#7f8799;font-size:11px;line-height:1.5;padding:2px 2px 4px}
+.terms input{width:auto!important;margin-top:2px}.terms a{color:#bcaeff;text-decoration:underline}
+.verify-hint{margin-top:10px;color:#8e7ff0;font-size:11px;line-height:1.6}
