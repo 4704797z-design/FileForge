@@ -210,7 +210,7 @@ These normally do not require secrets:
 | `FREE_VIDEO_TRIAL_SECONDS` | One-time free AI-video trial per account |
 | `EMAIL_VERIFICATION_ENABLED` | Send email verification links via SMTP |
 | `REQUIRE_EMAIL_VERIFICATION` | Block login/AI-video until email is verified |
-| `SMTP_*` | SMTP settings used for verification email delivery |
+| `RESEND_API_KEY` | Server-side Resend API key used only for transactional email sending |\n| `RESEND_FROM_EMAIL` | Verified sender address configured in Resend |
 | `COOKIE_SECURE` | Secure-cookie flag; use `true` behind HTTPS |
 
 ### Important `.env` rule
@@ -271,7 +271,7 @@ These defaults are configurable with PREMIUM_PRICE_RUB, PREMIUM_VIDEO_SECONDS an
 
 ## Account security
 
-Registration now requires password confirmation and Terms acceptance. The backend also includes an email-verification flow with one-time 24-hour verification tokens. Enable EMAIL_VERIFICATION_ENABLED=true and REQUIRE_EMAIL_VERIFICATION=true, then configure SMTP plus PUBLIC_BASE_URL to make verification mandatory in production.
+Registration now requires password confirmation and Terms acceptance. The backend sends a real one-time email-verification link through the Resend API. Enable EMAIL_VERIFICATION_ENABLED=true and REQUIRE_EMAIL_VERIFICATION=true, then configure RESEND_API_KEY, RESEND_FROM_EMAIL and PUBLIC_BASE_URL. The account page also has a 'send again' action for users who did not receive the message.
 
 ## API
 
