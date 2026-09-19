@@ -164,3 +164,22 @@ def test_verify_email_flow(client, monkeypatch):
     assert r.status_code == 200
     r = client.post("/api/auth/login", data={"email":"verify@example.com","password":"password123"})
     assert r.status_code == 200
+
+def test_resend_email_service(monkeypatch):
+    import app.services.email as email_service
+    monkeypatch.setenv("RESEND_API_KEY", "re_test")
+    monkeypatch.setenv("RESEND_FROM_EMAIL", "FileForge <onboarding@example.com>")
+    seen = {}
+    class Response:
+        status_code = 200
+        def json(self):
+            return {"id":"email-test-1"}
+    def fake_post(url, headers, json, timeout):
+        seen.update({"url":url,"headers":headers,"json":json,"timeout":timeout})
+        return Response()
+    monkeypatch.setattr(email_service.requests, "post", fake_post)
+    result = email_service.send_verification("user@example.com", "abc123", "https://fileforge.example")
+    assert result["id"] == "email-test-1"
+    assert seen["url"] == "https://api.resend.com/emails"
+    assert seen["headers"]["Authorization"] == "Bearer re_test"
+    assert "https://fileforge.example/api/auth/verify?token=abc123" in seen["json"]["html"]
