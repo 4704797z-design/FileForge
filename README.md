@@ -169,7 +169,7 @@ The current implementation uses the Fast Seedance endpoint for 480p/720p and the
 
 For the old generic adapter, `ANIMATION_API_URL` / `ANIMATION_API_TOKEN` remain in the configuration only for compatibility. They are not used by the built-in Seedance path.
 
-The source image is converted to a data URL for the provider request, so the MVP does not need to expose a public URL for the user's uploaded image. Seedance accepts JPEG, PNG and WebP starting images up to 30 MB.  
+The source image is uploaded through fal-client to obtain a temporary provider-side image URL; the browser never receives FAL_KEY. Seedance accepts JPEG, PNG and WebP starting images up to 30 MB.  
 
 ### 5. Payment credentials
 
@@ -251,10 +251,27 @@ Never send API keys, payment credentials, passwords, or private tokens through c
 | `COOKIE_SECURE` | Secure cookie flag |
 | `AI_UPSCALE_URL` / `AI_UPSCALE_TOKEN` | AI upscale provider |
 | `ANIMATION_API_URL` / `ANIMATION_API_TOKEN` | Legacy generic animation adapter; not used by built-in Seedance |\n| `FAL_KEY` | Seedance 2.0 / fal.ai server-side API key |
-| `FAL_KEY` | Seedance/fal.ai server-side API key |
+| `FAL_KEY` | Seedance 2.0 / fal.ai server-side API key |
 | `PAYMENT_PROVIDER` | Payment adapter; use `yookassa` for the built-in checkout |\n| `YOOKASSA_SHOP_ID` | YooKassa merchant Shop ID |\n| `YOOKASSA_SECRET_KEY` | YooKassa server-side secret key |\n| `PUBLIC_BASE_URL` | Public HTTPS origin used as payment return URL |
 | `PAYMENT_API_URL` / `PAYMENT_API_TOKEN` | Payment adapter credentials |
 | `PAYMENT_WEBHOOK_SECRET` | Payment webhook HMAC secret |
+
+## Premium economics
+
+The MVP no longer treats AI-video as an unlimited operation count. Video usage is metered in weighted seconds because the provider bills by generated video duration.
+
+- **Free:** one 5-second AI-video trial per account, 720p.
+- **Premium:** **999 ₽ / 30 days**, with **30 weighted AI-video seconds** included.
+- 720p consumes 1 AI-second per generated second.
+- 1080p consumes 3 AI-seconds per generated second.
+- When the AI-video balance reaches zero, new AI-video jobs are rejected instead of silently creating provider costs.
+- Ordinary file operations keep their separate daily limits.
+
+These defaults are configurable with PREMIUM_PRICE_RUB, PREMIUM_VIDEO_SECONDS and FREE_VIDEO_TRIAL_SECONDS.
+
+## Account security
+
+Registration now requires password confirmation and Terms acceptance. The backend also includes an email-verification flow with one-time 24-hour verification tokens. Enable EMAIL_VERIFICATION_ENABLED=true and REQUIRE_EMAIL_VERIFICATION=true, then configure SMTP plus PUBLIC_BASE_URL to make verification mandatory in production.
 
 ## API
 
