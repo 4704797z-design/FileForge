@@ -233,6 +233,7 @@ async def webhook(req:Request):
  with db() as c:
   o=c.execute("SELECT * FROM orders WHERE id=?",(oid,)).fetchone()
   if not o:raise HTTPException(404,"Order not found")
+  if o["status"]=="paid":return {"ok":True,"idempotent":True}
   until=int(time.time())+30*24*3600;c.execute("UPDATE orders SET status='paid',paid_at=? WHERE id=?",(int(time.time()),oid));c.execute("UPDATE users SET premium=1,premium_until=? WHERE id=?",(until,o["user_id"]))
  return {"ok":True}
 @APP.get("/api/config")
