@@ -90,3 +90,20 @@ def test_animation_rejects_bad_options(client, monkeypatch):
     monkeypatch.setattr(main.seedance, "configured", lambda: True)
     r = client.post("/api/photo/animate", files={"file":("test.png", png_bytes(), "image/png")}, data={"prompt":"x","duration":"99"})
     assert r.status_code == 400
+
+def test_yookassa_payment_flow_is_verified_and_idempotent(client, monkeypatch):
+    monkeypatch.setenv("PAYMENT_PROVIDER", "yookassa")
+    import app.main as main
+    monkeypatch.setattr(main.yookassa, "configured", lambda: True)
+    monkeypatch.setattr(main.yookassa, "create_payment", lambda order_id, amount: {"id":"pay-test-1","status":"pending","checkout_url":"https://pay.example/1"})
+    monkeypatch.setattr(main.yookassa, "get_payment", lambda payment_id: {"id":payment_id,"status":"succeeded","amount":{"value":"299.00","currency":"RUB"},"metadata":{"order_id":"1"}})
+    client.post("/api/auth/register", data={"email":"pay@example.com","password":"password123"})
+    r = client.post("/api/premium/create")
+    assert r.status_code == 200
+    assert r.json()["checkout_url"] == "https://pay.example/1"
+    r = client.post("/api/payment/webhook", json={"event":"payment.succeeded","object":{"id":"pay-test-1"}})
+    assert r.status_code == 200
+    assert client.get("/api/me").json()["premium"] is True
+    r = client.post("/api/payment/webhook", json={"event":"payment.succeeded","object":{"id":"pay-test-1"}})
+    assert r.status_code == 200
+    assert r.json()["idempotent"] is True
