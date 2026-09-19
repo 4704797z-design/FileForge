@@ -1,4 +1,4 @@
-import io,os,sqlite3,time,tempfile,subprocess,zipfile,hmac,hashlib
+import io,os,sqlite3,time,tempfile,subprocess,zipfile,hmac,hashlib,secrets
 from pathlib import Path
 import bcrypt
 import requests
@@ -9,6 +9,7 @@ from itsdangerous import URLSafeTimedSerializer
 from PIL import Image,ImageEnhance
 from pypdf import PdfReader,PdfWriter
 from pdf2image import convert_from_bytes
+from app.services import seedance
 
 APP=FastAPI(title="FileForge",version="6.0")
 DATA=Path(os.getenv("DATABASE","/data/fileforge.db"));DATA.parent.mkdir(parents=True,exist_ok=True)
@@ -22,6 +23,7 @@ with db() as c:
  c.execute("""CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,email TEXT UNIQUE,password_hash TEXT,premium INTEGER DEFAULT 0,premium_until INTEGER,created_at INTEGER)""")
  c.execute("""CREATE TABLE IF NOT EXISTS usage(subject TEXT,day TEXT,count INTEGER,PRIMARY KEY(subject,day))""")
  c.execute("""CREATE TABLE IF NOT EXISTS orders(id INTEGER PRIMARY KEY,user_id INTEGER,amount INTEGER,status TEXT,provider_id TEXT,created_at INTEGER,paid_at INTEGER)""")
+ c.execute("""CREATE TABLE IF NOT EXISTS generations(id INTEGER PRIMARY KEY,user_id INTEGER,public_token TEXT UNIQUE NOT NULL,status TEXT NOT NULL,provider TEXT NOT NULL,provider_request_id TEXT,prompt TEXT,input_filename TEXT,duration TEXT,resolution TEXT,aspect_ratio TEXT,generate_audio INTEGER,created_at INTEGER,completed_at INTEGER,video_url TEXT,error TEXT)""")
 
 def user(req):
  t=req.cookies.get("ff_session")
@@ -155,12 +157,47 @@ async def djvu(req:Request,file:UploadFile=File(...)):
   if p.returncode:raise HTTPException(500,"DJVU conversion failed")
   return out(dst.read_bytes(),"converted.pdf","application/pdf")
 @APP.post("/api/photo/animate")
-async def animate(req:Request,file:UploadFile=File(...)):
- limit(req);b=await file.read();check(b);url,tok=os.getenv("ANIMATION_API_URL"),os.getenv("ANIMATION_API_TOKEN")
- if not(url and tok):raise HTTPException(503,"Photo animation provider is not configured")
- r=requests.post(url,headers={"Authorization":f"Bearer {tok}"},files={"file":("photo",b,file.content_type or "image/jpeg")},timeout=60)
- if r.status_code>=400:raise HTTPException(502,"Animation provider error")
- return JSONResponse({"provider_response":r.json() if "json" in r.headers.get("content-type","") else r.text})
+async def animate(req:Request,file:UploadFile=File(...),prompt:str=Form("Slow cinematic camera movement, natural motion, subtle depth and realistic lighting."),duration:str=Form("5"),resolution:str=Form("720p"),aspect_ratio:str=Form("auto"),generate_audio:bool=Form(True)):
+ if not seedance.configured():raise HTTPException(503,"Seedance provider is not configured")
+ b=await file.read();check(b)
+ if len(b)>30*1024*1024:raise HTTPException(413,"Seedance accepts images up to 30 MB")
+ try:seedance.validate_options(prompt,duration,resolution,aspect_ratio)
+ except ValueError as e:raise HTTPException(400,str(e))
+ limit(req);u=user(req);token=secrets.token_urlsafe(24);now=int(time.time())
+ with db() as c:
+  x=c.execute("""INSERT INTO generations(user_id,public_token,status,provider,prompt,input_filename,duration,resolution,aspect_ratio,generate_audio,created_at)
+                 VALUES(?,?,?,?,?,?,?,?,?,?,?)""",(u["id"] if u else None,token,"submitting","seedance-2.0",prompt.strip(),file.filename or "photo",duration,resolution,aspect_ratio,int(generate_audio),now))
+  gid=x.lastrowid
+ try:
+  request_id=seedance.submit(b,file.content_type,prompt,duration,resolution,aspect_ratio,generate_audio)
+ except Exception as e:
+  with db() as c:c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(str(e)[:1000],gid))
+  raise HTTPException(502,"Seedance request could not be submitted")
+ with db() as c:c.execute("UPDATE generations SET status='queued',provider_request_id=? WHERE id=?",(request_id,gid))
+ return {"generation_id":gid,"token":token,"status":"queued","provider_request_id":request_id}
+
+@APP.get("/api/photo/animate/{token}")
+def animation_status(token:str):
+ with db() as c:g=c.execute("SELECT * FROM generations WHERE public_token=? AND provider='seedance-2.0'",(token,)).fetchone()
+ if not g:raise HTTPException(404,"Generation not found")
+ if g["status"] in ("queued","processing","submitting"):
+  try:
+   s=seedance.status(g["provider_request_id"],g["resolution"])
+  except Exception as e:
+   return {"generation_id":g["id"],"status":g["status"],"error":str(e)[:500]}
+  if s["status"]=="processing":
+   with db() as c:c.execute("UPDATE generations SET status='processing' WHERE id=?",(g["id"],))
+   return {"generation_id":g["id"],"status":"processing"}
+  if s["status"]=="completed":
+   video=s["video"]
+   with db() as c:c.execute("UPDATE generations SET status='completed',completed_at=?,video_url=? WHERE id=?",(int(time.time()),video["url"],g["id"]))
+   return {"generation_id":g["id"],"status":"completed","video":video,"seed":s.get("seed")}
+  if s["status"]=="failed":
+   with db() as c:c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(s.get("error","Seedance generation failed"),g["id"]))
+   return {"generation_id":g["id"],"status":"failed","error":s.get("error","Seedance generation failed")}
+ if g["status"]=="completed":
+  return {"generation_id":g["id"],"status":"completed","video":{"url":g["video_url"]}}
+ return {"generation_id":g["id"],"status":g["status"],"error":g["error"]}
 @APP.post("/api/premium/create")
 def premium_create(req:Request):
  u=user(req)
@@ -189,4 +226,4 @@ async def webhook(req:Request):
   until=int(time.time())+30*24*3600;c.execute("UPDATE orders SET status='paid',paid_at=? WHERE id=?",(int(time.time()),oid));c.execute("UPDATE users SET premium=1,premium_until=? WHERE id=?",(until,o["user_id"]))
  return {"ok":True}
 @APP.get("/api/config")
-def config():return {"version":"6.0","price_rub":PRICE,"ai_upscale":bool(os.getenv("AI_UPSCALE_URL") and os.getenv("AI_UPSCALE_TOKEN")),"animation":bool(os.getenv("ANIMATION_API_URL") and os.getenv("ANIMATION_API_TOKEN")),"payments":bool(os.getenv("PAYMENT_API_URL") and os.getenv("PAYMENT_API_TOKEN"))}
+def config():return {"version":"6.0","price_rub":PRICE,"ai_upscale":bool(os.getenv("AI_UPSCALE_URL") and os.getenv("AI_UPSCALE_TOKEN")),"animation":seedance.configured(),"payments":bool(os.getenv("PAYMENT_API_URL") and os.getenv("PAYMENT_API_TOKEN"))}
