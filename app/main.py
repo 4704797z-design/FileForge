@@ -14,13 +14,18 @@ from app.services import seedance,yookassa
 APP=FastAPI(title="FileForge",version="6.0")
 DATA=Path(os.getenv("DATABASE","/data/fileforge.db"));DATA.parent.mkdir(parents=True,exist_ok=True)
 SECRET=os.getenv("SECRET_KEY","dev-secret");SER=URLSafeTimedSerializer(SECRET)
-ANON=int(os.getenv("ANON_DAILY_LIMIT","5"));USER=int(os.getenv("USER_DAILY_LIMIT","20"));PREM=int(os.getenv("PREMIUM_DAILY_LIMIT","200"));MAX=int(os.getenv("MAX_UPLOAD_MB","50"));PRICE=int(os.getenv("PREMIUM_PRICE_RUB","299"))
+ANON=int(os.getenv("ANON_DAILY_LIMIT","5"));USER=int(os.getenv("USER_DAILY_LIMIT","20"));PREM=int(os.getenv("PREMIUM_DAILY_LIMIT","200"));MAX=int(os.getenv("MAX_UPLOAD_MB","50"));PRICE=int(os.getenv("PREMIUM_PRICE_RUB","999"))
+PREMIUM_VIDEO_SECONDS=int(os.getenv("PREMIUM_VIDEO_SECONDS","30"));FREE_VIDEO_TRIAL_SECONDS=int(os.getenv("FREE_VIDEO_TRIAL_SECONDS","5"))
+EMAIL_VERIFICATION_ENABLED=os.getenv("EMAIL_VERIFICATION_ENABLED","false").lower()=="true";REQUIRE_EMAIL_VERIFICATION=os.getenv("REQUIRE_EMAIL_VERIFICATION","false").lower()=="true"
 APP.mount("/static",StaticFiles(directory="app/static"),name="static")
 
 def db():
  c=sqlite3.connect(DATA);c.row_factory=sqlite3.Row;return c
 with db() as c:
  c.execute("""CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,email TEXT UNIQUE,password_hash TEXT,premium INTEGER DEFAULT 0,premium_until INTEGER,created_at INTEGER)""")
+ columns={r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
+ for name,ddl in (("email_verified","INTEGER DEFAULT 0"),("verification_token_hash","TEXT"),("verification_expires_at","INTEGER"),("video_seconds_balance","INTEGER DEFAULT 0"),("video_trial_used","INTEGER DEFAULT 0")):
+  if name not in columns:c.execute(f"ALTER TABLE users ADD COLUMN {name} {ddl}")
  c.execute("""CREATE TABLE IF NOT EXISTS usage(subject TEXT,day TEXT,count INTEGER,PRIMARY KEY(subject,day))""")
  c.execute("""CREATE TABLE IF NOT EXISTS orders(id INTEGER PRIMARY KEY,user_id INTEGER,amount INTEGER,status TEXT,provider_id TEXT,created_at INTEGER,paid_at INTEGER)""")
  c.execute("""CREATE TABLE IF NOT EXISTS generations(id INTEGER PRIMARY KEY,user_id INTEGER,public_token TEXT UNIQUE NOT NULL,status TEXT NOT NULL,provider TEXT NOT NULL,provider_request_id TEXT,prompt TEXT,input_filename TEXT,duration TEXT,resolution TEXT,aspect_ratio TEXT,generate_audio INTEGER,created_at INTEGER,completed_at INTEGER,video_url TEXT,error TEXT)""")
@@ -62,6 +67,38 @@ def verify_password(password,password_hash):
  try:return bcrypt.checkpw(raw,password_hash.encode("utf-8"))
  except (ValueError,TypeError):return False
 
+def token_hash(token):
+ return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+def send_verification_email(email,token):
+ if not EMAIL_VERIFICATION_ENABLED:return False
+ import smtplib
+ from email.message import EmailMessage
+ host=os.getenv("SMTP_HOST","").strip();user_name=os.getenv("SMTP_USER","").strip();password=os.getenv("SMTP_PASSWORD","");sender=os.getenv("SMTP_FROM",user_name).strip();base=os.getenv("PUBLIC_BASE_URL","").rstrip("/")
+ if not(host and user_name and password and sender and base):raise RuntimeError("Email verification is enabled but SMTP/PUBLIC_BASE_URL is not fully configured")
+ port=int(os.getenv("SMTP_PORT","587"));link=f"{base}/api/auth/verify?token={token}"
+ msg=EmailMessage();msg["Subject"]="Подтверждение email — FileForge";msg["From"]=sender;msg["To"]=email
+ msg.set_content(f"Здравствуйте!\\n\\nПодтвердите email для FileForge, перейдя по ссылке:\\n{link}\\n\\nСсылка действует 24 часа. Если это были не вы, просто проигнорируйте письмо.")
+ with smtplib.SMTP(host,port,timeout=20) as smtp:
+  smtp.starttls();smtp.login(user_name,password);smtp.send_message(msg)
+ return True
+
+def premium_active(u):
+ return bool(u and u["premium"] and (not u["premium_until"] or u["premium_until"]>time.time()))
+
+def video_cost_seconds(duration,resolution):
+ seconds=int(duration)
+ multiplier=3 if resolution=="1080p" else 1
+ return seconds*multiplier
+
+def grant_premium(user_id):
+ now=int(time.time())
+ with db() as c:
+  u=c.execute("SELECT premium_until FROM users WHERE id=?",(user_id,)).fetchone()
+  base=max(now,int(u["premium_until"] or 0)) if u else now
+  until=base+30*24*3600
+  c.execute("UPDATE users SET premium=1,premium_until=?,video_seconds_balance=video_seconds_balance+? WHERE id=?",(until,PREMIUM_VIDEO_SECONDS,user_id))
+
 @APP.get("/",response_class=HTMLResponse)
 def home():return Path("app/static/index.html").read_text(encoding="utf8")
 @APP.get("/robots.txt")
@@ -77,22 +114,40 @@ def health():return {"status":"ok","version":"6.0"}
 @APP.get("/api/me")
 def me(req:Request):
  u=user(req)
- if not u:return {"authenticated":False,"premium":False,"limit":ANON}
- p=bool(u["premium"] and (not u["premium_until"] or u["premium_until"]>time.time()))
- return {"authenticated":True,"email":u["email"],"premium":p,"premium_until":u["premium_until"],"limit":PREM if p else USER}
+ if not u:return {"authenticated":False,"premium":False,"limit":ANON,"email_verified":False,"video_seconds_remaining":0,"video_trial_remaining":FREE_VIDEO_TRIAL_SECONDS}
+ p=premium_active(u)
+ remaining=int(u["video_seconds_balance"] or 0) if p else 0
+ return {"authenticated":True,"email":u["email"],"premium":p,"premium_until":u["premium_until"],"limit":PREM if p else USER,"email_verified":bool(u["email_verified"]),"video_seconds_remaining":remaining,"video_trial_remaining":0 if u["video_trial_used"] else FREE_VIDEO_TRIAL_SECONDS}
 @APP.post("/api/auth/register")
-def register(req:Request,email:str=Form(...),password:str=Form(...)):
+def register(req:Request,email:str=Form(...),password:str=Form(...),password_confirm:str=Form(""),accept_terms:bool=Form(False)):
  email=email.strip().lower()
- if "@" not in email or len(password)<8:raise HTTPException(400,"Нужен email и пароль от 8 символов")
+ if "@" not in email or len(password)<8:raise HTTPException(400,"Нужен корректный email и пароль от 8 символов")
+ if password_confirm != password:raise HTTPException(400,"Пароли не совпадают")
+ if not accept_terms:raise HTTPException(400,"Нужно принять условия сервиса")
+ token=secrets.token_urlsafe(32);now=int(time.time())
  try:
   with db() as c:
-   x=c.execute("INSERT INTO users(email,password_hash,created_at) VALUES(?,?,?)",(email,hash_password(password),int(time.time())));uid=x.lastrowid
+   x=c.execute("INSERT INTO users(email,password_hash,created_at,email_verified,verification_token_hash,verification_expires_at) VALUES(?,?,?,?,?,?)",(email,hash_password(password),now,0,token_hash(token),now+24*3600));uid=x.lastrowid
  except sqlite3.IntegrityError:raise HTTPException(409,"Пользователь уже существует")
- r=JSONResponse({"ok":True});r.set_cookie("ff_session",SER.dumps({"uid":uid}),httponly=True,samesite="lax",secure=os.getenv("COOKIE_SECURE","false").lower()=="true",max_age=2592000);return r
+ verification_sent=False
+ if EMAIL_VERIFICATION_ENABLED:
+  try:verification_sent=send_verification_email(email,token)
+  except Exception as e:
+   with db() as c:c.execute("DELETE FROM users WHERE id=?",(uid,))
+   raise HTTPException(502,"Не удалось отправить письмо подтверждения") from e
+ r=JSONResponse({"ok":True,"email_verification_enabled":EMAIL_VERIFICATION_ENABLED,"verification_sent":verification_sent,"verification_required":REQUIRE_EMAIL_VERIFICATION});r.set_cookie("ff_session",SER.dumps({"uid":uid}),httponly=True,samesite="lax",secure=os.getenv("COOKIE_SECURE","false").lower()=="true",max_age=2592000);return r
+@APP.get("/api/auth/verify",response_class=HTMLResponse)
+def verify_email(token:str):
+ h=token_hash(token);now=int(time.time())
+ with db() as c:u=c.execute("SELECT id FROM users WHERE verification_token_hash=? AND verification_expires_at>?",(h,now)).fetchone()
+ if not u:return HTMLResponse("<h2>Ссылка недействительна или истекла.</h2>",status_code=400)
+ with db() as c:c.execute("UPDATE users SET email_verified=1,verification_token_hash=NULL,verification_expires_at=NULL WHERE id=?",(u["id"],))
+ return HTMLResponse("<script>location.href='/?verified=1#account'</script><p>Email подтверждён. Вернитесь в FileForge.</p>")
 @APP.post("/api/auth/login")
 def login(email:str=Form(...),password:str=Form(...)):
  with db() as c:u=c.execute("SELECT * FROM users WHERE email=?",(email.strip().lower(),)).fetchone()
  if not u or not verify_password(password,u["password_hash"]):raise HTTPException(401,"Неверные данные")
+ if REQUIRE_EMAIL_VERIFICATION and not u["email_verified"]:raise HTTPException(403,"Сначала подтвердите email")
  r=JSONResponse({"ok":True});r.set_cookie("ff_session",SER.dumps({"uid":u["id"]}),httponly=True,samesite="lax",secure=os.getenv("COOKIE_SECURE","false").lower()=="true",max_age=2592000);return r
 @APP.post("/api/auth/logout")
 def logout():
@@ -158,24 +213,45 @@ async def djvu(req:Request,file:UploadFile=File(...)):
   return out(dst.read_bytes(),"converted.pdf","application/pdf")
 @APP.post("/api/photo/animate")
 async def animate(req:Request,file:UploadFile=File(...),prompt:str=Form("Slow cinematic camera movement, natural motion, subtle depth and realistic lighting."),duration:str=Form("5"),resolution:str=Form("720p"),aspect_ratio:str=Form("auto"),generate_audio:bool=Form(True)):
+ u=user(req)
+ if not u:raise HTTPException(401,"Для AI-видео сначала создайте аккаунт")
+ if REQUIRE_EMAIL_VERIFICATION and not u["email_verified"]:raise HTTPException(403,"Для AI-видео подтвердите email")
  if not seedance.configured():raise HTTPException(503,"Seedance provider is not configured")
  b=await file.read();check(b)
  if len(b)>30*1024*1024:raise HTTPException(413,"Seedance accepts images up to 30 MB")
  im(b)
- try:seedance.validate_options(prompt,duration,resolution,aspect_ratio)
- except ValueError as e:raise HTTPException(400,str(e))
- limit(req);u=user(req);token=secrets.token_urlsafe(24);now=int(time.time())
+ try:
+  seedance.validate_options(prompt,duration,resolution,aspect_ratio);seconds=int(duration)
+ except (ValueError,TypeError) as e:raise HTTPException(400,str(e))
+ limit(req)
+ p=premium_active(u);reserved=video_cost_seconds(duration,resolution) if p else 0;trial_reserved=False
+ if not p:
+  if resolution!="720p":raise HTTPException(400,"Для Free-доступа доступно только 720p")
+  if seconds>FREE_VIDEO_TRIAL_SECONDS:raise HTTPException(402,f"Бесплатный пробный лимит — {FREE_VIDEO_TRIAL_SECONDS} секунд AI-видео")
+  with db() as c:
+   changed=c.execute("UPDATE users SET video_trial_used=1 WHERE id=? AND video_trial_used=0",(u["id"],)).rowcount
+  if changed!=1:raise HTTPException(402,"Пробный AI-лимит уже использован")
+  trial_reserved=True
+ else:
+  if u["video_seconds_balance"]<reserved:raise HTTPException(402,f"Недостаточно AI-секунд. Осталось {u['video_seconds_balance']} сек., нужно {reserved}")
+  with db() as c:
+   changed=c.execute("UPDATE users SET video_seconds_balance=video_seconds_balance-? WHERE id=? AND video_seconds_balance>=?",(reserved,u["id"],reserved)).rowcount
+  if changed!=1:raise HTTPException(402,"Недостаточно AI-секунд")
+ token=secrets.token_urlsafe(24);now=int(time.time())
  with db() as c:
   x=c.execute("""INSERT INTO generations(user_id,public_token,status,provider,prompt,input_filename,duration,resolution,aspect_ratio,generate_audio,created_at)
-                 VALUES(?,?,?,?,?,?,?,?,?,?,?)""",(u["id"] if u else None,token,"submitting","seedance-2.0",prompt.strip(),file.filename or "photo",duration,resolution,aspect_ratio,int(generate_audio),now))
+                 VALUES(?,?,?,?,?,?,?,?,?,?,?)""",(u["id"],token,"submitting","seedance-2.0",prompt.strip(),file.filename or "photo",duration,resolution,aspect_ratio,int(generate_audio),now))
   gid=x.lastrowid
  try:
   request_id=seedance.submit(b,file.content_type,prompt,duration,resolution,aspect_ratio,generate_audio)
  except Exception as e:
-  with db() as c:c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(str(e)[:1000],gid))
+  with db() as c:
+   c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(str(e)[:1000],gid))
+   if p:c.execute("UPDATE users SET video_seconds_balance=video_seconds_balance+? WHERE id=?",(reserved,u["id"]))
+   elif trial_reserved:c.execute("UPDATE users SET video_trial_used=0 WHERE id=?",(u["id"],))
   raise HTTPException(502,"Seedance request could not be submitted")
  with db() as c:c.execute("UPDATE generations SET status='queued',provider_request_id=? WHERE id=?",(request_id,gid))
- return {"generation_id":gid,"token":token,"status":"queued","provider_request_id":request_id}
+ return {"generation_id":gid,"token":token,"status":"queued","provider_request_id":request_id,"video_seconds_charged":reserved if p else seconds}
 
 @APP.get("/api/photo/animate/{token}")
 def animation_status(token:str):
@@ -251,7 +327,7 @@ async def webhook(req:Request):
    if o["status"]=="paid":return {"ok":True,"idempotent":True}
    if str(paid_amount.get("currency"))!="RUB" or float(paid_amount.get("value",0)) != float(o["amount"]):
     raise HTTPException(400,"Payment amount mismatch")
-   until=int(time.time())+30*24*3600;c.execute("UPDATE orders SET status='paid',paid_at=? WHERE id=?",(int(time.time()),oid));c.execute("UPDATE users SET premium=1,premium_until=? WHERE id=?",(until,o["user_id"]))
+   grant_premium(o["user_id"]) ;c.execute("UPDATE orders SET status='paid',paid_at=? WHERE id=?",(int(time.time()),oid))
   return {"ok":True}
  secret=os.getenv("PAYMENT_WEBHOOK_SECRET","");signature=req.headers.get("X-FileForge-Signature","")
  if secret:
@@ -263,8 +339,8 @@ async def webhook(req:Request):
   o=c.execute("SELECT * FROM orders WHERE id=?",(oid,)).fetchone()
   if not o:raise HTTPException(404,"Order not found")
   if o["status"]=="paid":return {"ok":True,"idempotent":True}
-  until=int(time.time())+30*24*3600;c.execute("UPDATE orders SET status='paid',paid_at=? WHERE id=?",(int(time.time()),oid));c.execute("UPDATE users SET premium=1,premium_until=? WHERE id=?",(until,o["user_id"]))
+  grant_premium(o["user_id"]) ;c.execute("UPDATE orders SET status='paid',paid_at=? WHERE id=?",(int(time.time()),oid))
  return {"ok":True}
 
 @APP.get("/api/config")
-def config():return {"version":"6.0","price_rub":PRICE,"ai_upscale":bool(os.getenv("AI_UPSCALE_URL") and os.getenv("AI_UPSCALE_TOKEN")),"animation":seedance.configured(),"payments":(yookassa.configured() if os.getenv("PAYMENT_PROVIDER","manual").lower()=="yookassa" else bool(os.getenv("PAYMENT_API_URL") and os.getenv("PAYMENT_API_TOKEN")))}
+def config():return {"version":"6.0","price_rub":PRICE,"premium_video_seconds":PREMIUM_VIDEO_SECONDS,"free_video_trial_seconds":FREE_VIDEO_TRIAL_SECONDS,"ai_upscale":bool(os.getenv("AI_UPSCALE_URL") and os.getenv("AI_UPSCALE_TOKEN")),"animation":seedance.configured(),"payments":(yookassa.configured() if os.getenv("PAYMENT_PROVIDER","manual").lower()=="yookassa" else bool(os.getenv("PAYMENT_API_URL") and os.getenv("PAYMENT_API_TOKEN")))}
