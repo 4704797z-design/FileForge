@@ -60,8 +60,16 @@ async function load(){
   if(!j.authenticated){$("me").textContent=`Гость · ${j.limit} обычных операций/день · AI-пробник ${j.video_trial_remaining} сек.`;$("verifyHint").textContent="";return;}
   const video=j.premium?`AI-секунды: ${j.video_seconds_remaining} сек.`:`Пробник AI-видео: ${j.video_trial_remaining} сек.`;
   $("me").textContent=`${j.email} · ${j.premium?"Premium":"Free"} · ${j.email_verified?"email подтверждён":"email не подтверждён"} · ${video}`;
-  $("verifyHint").textContent=!j.email_verified?"Для продакшена можно включить обязательное подтверждение email на сервере.":"";
+  $("verifyHint").textContent=!j.email_verified?"Письмо с подтверждением нужно открыть в вашей почте. Если письмо не пришло, запросите его повторно.":"Email подтверждён.";
+  $("resendVerify").style.display=(!j.email_verified&&j.email_verification_enabled!==false)?"block":"none";
  }catch{$("me").textContent="Не удалось проверить статус"}
+}
+async function resendVerification(){
+ try{
+  let r=await fetch("/api/auth/resend-verification",{method:"POST"}),j=await r.json().catch(()=>({}));
+  if(!r.ok)throw Error(j.detail||"Не удалось отправить письмо");
+  toast(j.already_verified?"Email уже подтверждён":"✓ Письмо отправлено повторно");
+ }catch(e){toast(e.message)}
 }
 const observer=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add("visible");observer.unobserve(e.target)}}),{threshold:.08});document.querySelectorAll(".reveal").forEach(e=>observer.observe(e));
 ["up","conv","cmp","pdf","djvu","pdjvu","anim"].forEach(id=>{let el=$(id);if(!el)return;el.addEventListener("change",()=>{if(el.files?.[0])el.closest(".tool-card")?.classList.add("has-file")})});
