@@ -20,6 +20,8 @@ FileForge is a self-hosted web service for common image and document operations.
 
 ### Accounts
 - Email/password registration and login.
+- Password confirmation and Terms acceptance during registration.
+- Optional email verification flow with one-time 24-hour token and SMTP delivery.
 - Signed HTTP-only session cookie.
 - SQLite persistence.
 - Daily limits for guests, users and Premium users.
@@ -27,6 +29,9 @@ FileForge is a self-hosted web service for common image and document operations.
 ### Premium / integrations
 - Premium order creation endpoint.
 - Payment webhook with optional HMAC verification.
+- Premium default price: 999 ₽ / 30 days.
+- Premium includes 30 weighted AI-video seconds; 720p consumes 1 second per generated second, while 1080p consumes 3.
+- Free AI-video trial is limited to 5 seconds per account.
 - Optional AI upscale adapter.
 - Seedance 2.0 photo animation through fal.ai queue API.
 
@@ -123,7 +128,7 @@ Use a different value for every real deployment.
 
 ### 2. fal.ai / Seedance — `FAL_KEY`
 
-Seedance 2.0 is available through fal.ai. The official Seedance API uses the model endpoint `bytedance/seedance-2.0/image-to-video`, and fal documents `FAL_KEY` as the server-side API credential. The image-to-video API accepts an image URL plus a motion prompt and supports configurable duration/resolution. citeturn1search0turn2search12
+Seedance 2.0 is available through fal.ai. The official Seedance API uses the model endpoint `bytedance/seedance-2.0/image-to-video`, and fal documents `FAL_KEY` as the server-side API credential. The image-to-video API accepts an image URL plus a motion prompt and supports configurable duration/resolution. 
 
 To obtain the key:
 
@@ -134,9 +139,9 @@ To obtain the key:
 5. Put it into the server-side `.env` as `FAL_KEY=...`.
 6. Never expose the key to browser JavaScript or commit it to Git.
 
-fal's documentation explicitly recommends keeping `FAL_KEY` in the runtime environment and not exposing it client-side. citeturn0search1turn2search5
+fal's documentation explicitly recommends keeping `FAL_KEY` in the runtime environment and not exposing it client-side. 
 
-The current generic `ANIMATION_API_URL` / `ANIMATION_API_TOKEN` adapter is **not automatically compatible with fal's Seedance API**: fal's Seedance integration has its own upload/queue contract. The dedicated Seedance adapter must use that contract rather than pretending a fal key is a generic multipart-provider token. citeturn1search0
+The current generic `ANIMATION_API_URL` / `ANIMATION_API_TOKEN` adapter is **not automatically compatible with fal's Seedance API**: fal's Seedance integration has its own upload/queue contract. The dedicated Seedance adapter must use that contract rather than pretending a fal key is a generic multipart-provider token. 
 
 ### 3. AI upscale credentials
 
@@ -149,7 +154,7 @@ The token belongs only on the backend. Do not put it into `app/static/`, HTML, o
 
 ### 4. Photo-animation provider credentials
 
-Seedance 2.0 is now the built-in photo-animation provider. The backend submits a queued job through fal.ai, stores the request ID in SQLite, and exposes a status endpoint until the video is ready. The browser never receives `FAL_KEY`. fal recommends the queue approach for long-running generations and documents the Seedance image-to-video endpoint and Python client. citeturn5search3turn4search8turn3search0
+Seedance 2.0 is now the built-in photo-animation provider. The backend submits a queued job through fal.ai, stores the request ID in SQLite, and exposes a status endpoint until the video is ready. The browser never receives `FAL_KEY`. fal recommends the queue approach for long-running generations and documents the Seedance image-to-video endpoint and Python client. 
 
 The UI sends:
 
@@ -160,15 +165,15 @@ The UI sends:
 - aspect ratio;
 - optional synchronized audio.
 
-The current implementation uses the Fast Seedance endpoint for 480p/720p and the standard endpoint for 1080p. The provider currently documents separate per-second pricing for these tiers, so the application should not hard-code a single universal generation cost. citeturn5search0turn5search8
+The current implementation uses the Fast Seedance endpoint for 480p/720p and the standard endpoint for 1080p. The provider currently documents separate per-second pricing for these tiers, so the application should not hard-code a single universal generation cost. 
 
 For the old generic adapter, `ANIMATION_API_URL` / `ANIMATION_API_TOKEN` remain in the configuration only for compatibility. They are not used by the built-in Seedance path.
 
-The source image is converted to a data URL for the provider request, so the MVP does not need to expose a public URL for the user's uploaded image. Seedance accepts JPEG, PNG and WebP starting images up to 30 MB. citeturn5search3 citeturn1search0
+The source image is converted to a data URL for the provider request, so the MVP does not need to expose a public URL for the user's uploaded image. Seedance accepts JPEG, PNG and WebP starting images up to 30 MB.  
 
 ### 5. Payment credentials
 
-The repository now includes a server-side **YooKassa payment adapter**. This is the merchant checkout path; YooKassa's payment page can offer the payment methods enabled for the shop, and its documentation includes YooMoney as a supported payment method in test mode. citeturn7search0
+The repository now includes a server-side **YooKassa payment adapter**. This is the merchant checkout path; YooKassa's payment page can offer the payment methods enabled for the shop, and its documentation includes YooMoney as a supported payment method in test mode. 
 
 Set:
 
@@ -177,7 +182,7 @@ Set:
 - `YOOKASSA_SECRET_KEY` = secret API key from the merchant cabinet.
 - `PUBLIC_BASE_URL` = the public HTTPS origin of FileForge.
 
-The backend creates a payment with an idempotency key, stores the YooKassa payment ID, redirects the customer to the returned `confirmation_url`, and grants Premium only after the server verifies a `payment.succeeded` webhook by querying YooKassa's API. It also checks the paid RUB amount against the local order and ignores duplicate paid orders. YooKassa documents the server-side API, idempotency key, redirect confirmation and `succeeded` status flow. citeturn7search0turn7search1
+The backend creates a payment with an idempotency key, stores the YooKassa payment ID, redirects the customer to the returned `confirmation_url`, and grants Premium only after the server verifies a `payment.succeeded` webhook by querying YooKassa's API. It also checks the paid RUB amount against the local order and ignores duplicate paid orders. YooKassa documents the server-side API, idempotency key, redirect confirmation and `succeeded` status flow. 
 
 Configure the YooKassa notification endpoint as:
 
@@ -201,6 +206,11 @@ These normally do not require secrets:
 | `PREMIUM_DAILY_LIMIT` | Premium operations/day |
 | `MAX_UPLOAD_MB` | Upload limit |
 | `PREMIUM_PRICE_RUB` | Premium price |
+| `PREMIUM_VIDEO_SECONDS` | Included weighted AI-video seconds per paid 30-day period |
+| `FREE_VIDEO_TRIAL_SECONDS` | One-time free AI-video trial per account |
+| `EMAIL_VERIFICATION_ENABLED` | Send email verification links via SMTP |
+| `REQUIRE_EMAIL_VERIFICATION` | Block login/AI-video until email is verified |
+| `SMTP_*` | SMTP settings used for verification email delivery |
 | `COOKIE_SECURE` | Secure-cookie flag; use `true` behind HTTPS |
 
 ### Important `.env` rule
