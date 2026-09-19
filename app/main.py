@@ -161,6 +161,7 @@ async def animate(req:Request,file:UploadFile=File(...),prompt:str=Form("Slow ci
  if not seedance.configured():raise HTTPException(503,"Seedance provider is not configured")
  b=await file.read();check(b)
  if len(b)>30*1024*1024:raise HTTPException(413,"Seedance accepts images up to 30 MB")
+ im(b)
  try:seedance.validate_options(prompt,duration,resolution,aspect_ratio)
  except ValueError as e:raise HTTPException(400,str(e))
  limit(req);u=user(req);token=secrets.token_urlsafe(24);now=int(time.time())
