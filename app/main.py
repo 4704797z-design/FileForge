@@ -198,6 +198,16 @@ def animation_status(token:str):
  if g["status"]=="completed":
   return {"generation_id":g["id"],"status":"completed","video":{"url":g["video_url"]}}
  return {"generation_id":g["id"],"status":g["status"],"error":g["error"]}
+@APP.get("/api/photo/animate/{token}/download")
+def animation_download(token:str):
+ with db() as c:g=c.execute("SELECT * FROM generations WHERE public_token=? AND status='completed'",(token,)).fetchone()
+ if not g or not g["video_url"]:raise HTTPException(404,"Video is not ready")
+ try:
+  r=requests.get(g["video_url"],timeout=120)
+ except requests.RequestException:raise HTTPException(502,"Video download failed")
+ if r.status_code>=400:raise HTTPException(502,"Video provider returned an error")
+ return StreamingResponse(io.BytesIO(r.content),media_type="video/mp4",headers={"Content-Disposition":'attachment; filename="fileforge-animation.mp4"'})
+
 @APP.post("/api/premium/create")
 def premium_create(req:Request):
  u=user(req)
