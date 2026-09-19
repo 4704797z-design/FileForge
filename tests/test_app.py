@@ -108,6 +108,7 @@ def test_yookassa_payment_flow_is_verified_and_idempotent(client, monkeypatch):
     r = client.post("/api/payment/webhook", json={"event":"payment.succeeded","object":{"id":"pay-test-1"}})
     assert r.status_code == 200
     assert client.get("/api/me").json()["premium"] is True
+    assert client.get("/api/me").json()["video_seconds_remaining"] == 30
     r = client.post("/api/payment/webhook", json={"event":"payment.succeeded","object":{"id":"pay-test-1"}})
     assert r.status_code == 200
     assert r.json()["idempotent"] is True
