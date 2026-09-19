@@ -110,7 +110,7 @@ def me(req:Request):
  if not u:return {"authenticated":False,"premium":False,"limit":ANON,"email_verified":False,"video_seconds_remaining":0,"video_trial_remaining":FREE_VIDEO_TRIAL_SECONDS}
  p=premium_active(u)
  remaining=int(u["video_seconds_balance"] or 0) if p else 0
- return {"authenticated":True,"email":u["email"],"premium":p,"premium_until":u["premium_until"],"limit":PREM if p else USER,"email_verified":bool(u["email_verified"]),"video_seconds_remaining":remaining,"video_trial_remaining":0 if u["video_trial_used"] else FREE_VIDEO_TRIAL_SECONDS}
+ return {"authenticated":True,"email":u["email"],"premium":p,"premium_until":u["premium_until"],"limit":PREM if p else USER,"email_verified":bool(u["email_verified"]),"email_verification_enabled":EMAIL_VERIFICATION_ENABLED,"video_seconds_remaining":remaining,"video_trial_remaining":0 if u["video_trial_used"] else FREE_VIDEO_TRIAL_SECONDS}
 @APP.post("/api/auth/register")
 def register(req:Request,email:str=Form(...),password:str=Form(...),password_confirm:str=Form(""),accept_terms:bool=Form(False)):
  email=email.strip().lower()
