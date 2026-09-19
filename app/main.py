@@ -9,7 +9,7 @@ from itsdangerous import URLSafeTimedSerializer
 from PIL import Image,ImageEnhance
 from pypdf import PdfReader,PdfWriter
 from pdf2image import convert_from_bytes
-from app.services import seedance
+from app.services import seedance,yookassa
 
 APP=FastAPI(title="FileForge",version="6.0")
 DATA=Path(os.getenv("DATABASE","/data/fileforge.db"));DATA.parent.mkdir(parents=True,exist_ok=True)
@@ -213,6 +213,13 @@ def premium_create(req:Request):
  u=user(req)
  if not u:raise HTTPException(401,"Войдите в аккаунт")
  with db() as c:x=c.execute("INSERT INTO orders(user_id,amount,status,created_at) VALUES(?,?,?,?)",(u["id"],PRICE,"pending",int(time.time())));oid=x.lastrowid
+ provider=os.getenv("PAYMENT_PROVIDER","manual").lower()
+ if provider=="yookassa":
+  if not yookassa.configured():return {"order_id":oid,"status":"pending","amount":PRICE,"checkout_url":None,"message":"YooKassa ещё не настроена"}
+  try:j=yookassa.create_payment(oid,PRICE)
+  except Exception:raise HTTPException(502,"Payment provider error")
+  with db() as c:c.execute("UPDATE orders SET provider_id=? WHERE id=?",(str(j.get("id","")),oid))
+  return {"order_id":oid,"status":j.get("status","pending"),"amount":PRICE,"checkout_url":j.get("checkout_url")}
  url,tok=os.getenv("PAYMENT_API_URL"),os.getenv("PAYMENT_API_TOKEN")
  if not(url and tok):return {"order_id":oid,"status":"pending","amount":PRICE,"checkout_url":None,"message":"Платёжный провайдер ещё не подключён"}
  r=requests.post(url,headers={"Authorization":f"Bearer {tok}"},json={"order_id":oid,"amount":PRICE,"currency":"RUB"},timeout=30)
@@ -220,14 +227,35 @@ def premium_create(req:Request):
  j=r.json()
  with db() as c:c.execute("UPDATE orders SET provider_id=? WHERE id=?",(str(j.get("id","")),oid))
  return {"order_id":oid,"status":"pending","amount":PRICE,"checkout_url":j.get("checkout_url")}
+
 @APP.post("/api/payment/webhook")
 async def webhook(req:Request):
- body=await req.body();secret=os.getenv("PAYMENT_WEBHOOK_SECRET","");signature=req.headers.get("X-FileForge-Signature","")
+ body=await req.body()
+ try:j=__import__("json").loads(body)
+ except:raise HTTPException(400,"Invalid JSON")
+ provider=os.getenv("PAYMENT_PROVIDER","manual").lower()
+ if provider=="yookassa":
+  event=j.get("event","");obj=j.get("object") or {};payment_id=obj.get("id")
+  if event!="payment.succeeded" or not payment_id:return {"ok":True}
+  try:payment=yookassa.get_payment(str(payment_id))
+  except Exception:raise HTTPException(502,"Unable to verify payment")
+  if payment.get("status")!="succeeded":return {"ok":True}
+  meta=payment.get("metadata") or {}
+  try:oid=int(meta.get("order_id","0"))
+  except ValueError:raise HTTPException(400,"Invalid order_id")
+  paid_amount=payment.get("amount") or {}
+  with db() as c:
+   o=c.execute("SELECT * FROM orders WHERE id=?",(oid,)).fetchone()
+   if not o:raise HTTPException(404,"Order not found")
+   if o["status"]=="paid":return {"ok":True,"idempotent":True}
+   if str(paid_amount.get("currency"))!="RUB" or float(paid_amount.get("value",0)) != float(o["amount"]):
+    raise HTTPException(400,"Payment amount mismatch")
+   until=int(time.time())+30*24*3600;c.execute("UPDATE orders SET status='paid',paid_at=? WHERE id=?",(int(time.time()),oid));c.execute("UPDATE users SET premium=1,premium_until=? WHERE id=?",(until,o["user_id"]))
+  return {"ok":True}
+ secret=os.getenv("PAYMENT_WEBHOOK_SECRET","");signature=req.headers.get("X-FileForge-Signature","")
  if secret:
   expected=hmac.new(secret.encode(),body,hashlib.sha256).hexdigest()
   if not hmac.compare_digest(expected,signature):raise HTTPException(401,"Invalid signature")
- try:j=__import__("json").loads(body)
- except:raise HTTPException(400,"Invalid JSON")
  oid=int(j.get("order_id",0));status=j.get("status")
  if status!="paid":return {"ok":True}
  with db() as c:
@@ -236,5 +264,6 @@ async def webhook(req:Request):
   if o["status"]=="paid":return {"ok":True,"idempotent":True}
   until=int(time.time())+30*24*3600;c.execute("UPDATE orders SET status='paid',paid_at=? WHERE id=?",(int(time.time()),oid));c.execute("UPDATE users SET premium=1,premium_until=? WHERE id=?",(until,o["user_id"]))
  return {"ok":True}
+
 @APP.get("/api/config")
-def config():return {"version":"6.0","price_rub":PRICE,"ai_upscale":bool(os.getenv("AI_UPSCALE_URL") and os.getenv("AI_UPSCALE_TOKEN")),"animation":seedance.configured(),"payments":bool(os.getenv("PAYMENT_API_URL") and os.getenv("PAYMENT_API_TOKEN"))}
+def config():return {"version":"6.0","price_rub":PRICE,"ai_upscale":bool(os.getenv("AI_UPSCALE_URL") and os.getenv("AI_UPSCALE_TOKEN")),"animation":seedance.configured(),"payments":(yookassa.configured() if os.getenv("PAYMENT_PROVIDER","manual").lower()=="yookassa" else bool(os.getenv("PAYMENT_API_URL") and os.getenv("PAYMENT_API_TOKEN")))}
