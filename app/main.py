@@ -227,7 +227,7 @@ async def animate(req:Request,file:UploadFile=File(...),prompt:str=Form("Slow ci
  if REQUIRE_EMAIL_VERIFICATION and not u["email_verified"]:raise HTTPException(403,"Для AI-видео подтвердите email")
  if not ltx.configured():raise HTTPException(503,"LTX provider is not configured")
  b=await file.read();check(b)
- if len(b)>30*1024*1024:raise HTTPException(413,"Seedance accepts images up to 30 MB")
+ if len(b)>30*1024*1024:raise HTTPException(413,"LTX accepts images up to 30 MB")
  im(b)
  try:
   ltx.validate_options(prompt,duration,resolution,aspect_ratio);seconds=int(duration)
@@ -259,7 +259,7 @@ async def animate(req:Request,file:UploadFile=File(...),prompt:str=Form("Slow ci
    c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(str(e)[:1000],gid))
    if p:c.execute("UPDATE users SET video_seconds_balance=video_seconds_balance+? WHERE id=?",(reserved,u["id"]))
    elif trial_reserved:c.execute("UPDATE users SET video_trial_used=0 WHERE id=?",(u["id"],))
-  raise HTTPException(502,"Seedance request could not be submitted")
+  raise HTTPException(502,"LTX-2.3 request could not be submitted")
  with db() as c:c.execute("UPDATE generations SET status='queued',provider_request_id=? WHERE id=?",(request_id,gid))
  return {"generation_id":gid,"token":token,"status":"queued","provider_request_id":request_id,"video_seconds_charged":reserved if p else seconds}
 
@@ -280,8 +280,8 @@ def animation_status(token:str):
    with db() as c:c.execute("UPDATE generations SET status='completed',completed_at=?,video_url=? WHERE id=?",(int(time.time()),video["url"],g["id"]))
    return {"generation_id":g["id"],"status":"completed","video":video,"seed":s.get("seed")}
   if s["status"]=="failed":
-   with db() as c:c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(s.get("error","Seedance generation failed"),g["id"]))
-   return {"generation_id":g["id"],"status":"failed","error":s.get("error","Seedance generation failed")}
+   with db() as c:c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(s.get("error","LTX-2.3 generation failed"),g["id"]))
+   return {"generation_id":g["id"],"status":"failed","error":s.get("error","LTX-2.3 generation failed")}
  if g["status"]=="completed":
   return {"generation_id":g["id"],"status":"completed","video":{"url":g["video_url"]}}
  return {"generation_id":g["id"],"status":g["status"],"error":g["error"]}
