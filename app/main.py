@@ -12,7 +12,7 @@ from itsdangerous import URLSafeTimedSerializer
 from PIL import Image,ImageEnhance
 from pypdf import PdfReader,PdfWriter
 from pdf2image import convert_from_bytes
-from app.services import seedance,yookassa,email as email_service
+from app.services import ltx,yookassa,email as email_service
 
 APP=FastAPI(title="FileForge",version="6.0")
 DATA=Path(os.getenv("DATABASE","/data/fileforge.db"));DATA.parent.mkdir(parents=True,exist_ok=True)
@@ -225,12 +225,12 @@ async def animate(req:Request,file:UploadFile=File(...),prompt:str=Form("Slow ci
  u=user(req)
  if not u:raise HTTPException(401,"Для AI-видео сначала создайте аккаунт")
  if REQUIRE_EMAIL_VERIFICATION and not u["email_verified"]:raise HTTPException(403,"Для AI-видео подтвердите email")
- if not seedance.configured():raise HTTPException(503,"Seedance provider is not configured")
+ if not ltx.configured():raise HTTPException(503,"LTX provider is not configured")
  b=await file.read();check(b)
  if len(b)>30*1024*1024:raise HTTPException(413,"Seedance accepts images up to 30 MB")
  im(b)
  try:
-  seedance.validate_options(prompt,duration,resolution,aspect_ratio);seconds=int(duration)
+  ltx.validate_options(prompt,duration,resolution,aspect_ratio);seconds=int(duration)
  except (ValueError,TypeError) as e:raise HTTPException(400,str(e))
  limit(req)
  p=premium_active(u);reserved=video_cost_seconds(duration,resolution) if p else 0;trial_reserved=False
@@ -249,12 +249,12 @@ async def animate(req:Request,file:UploadFile=File(...),prompt:str=Form("Slow ci
  token=secrets.token_urlsafe(24);now=int(time.time())
  with db() as c:
   x=c.execute("""INSERT INTO generations(user_id,public_token,status,provider,prompt,input_filename,duration,resolution,aspect_ratio,generate_audio,created_at)
-                 VALUES(?,?,?,?,?,?,?,?,?,?,?)""",(u["id"],token,"submitting","seedance-2.0",prompt.strip(),file.filename or "photo",duration,resolution,aspect_ratio,int(generate_audio),now))
+                 VALUES(?,?,?,?,?,?,?,?,?,?,?)""",(u["id"],token,"submitting","ltx-2.3-22b-distilled",prompt.strip(),file.filename or "photo",duration,resolution,aspect_ratio,int(generate_audio),now))
   gid=x.lastrowid
  try:
-  request_id=seedance.submit(b,file.content_type,prompt,duration,resolution,aspect_ratio,generate_audio)
+  request_id=ltx.submit(b,file.content_type,prompt,duration,resolution,aspect_ratio,generate_audio)
  except Exception as e:
-  logger.exception("Seedance submit failed")
+  logger.exception("LTX submit failed")
   with db() as c:
    c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(str(e)[:1000],gid))
    if p:c.execute("UPDATE users SET video_seconds_balance=video_seconds_balance+? WHERE id=?",(reserved,u["id"]))
@@ -265,11 +265,11 @@ async def animate(req:Request,file:UploadFile=File(...),prompt:str=Form("Slow ci
 
 @APP.get("/api/photo/animate/{token}")
 def animation_status(token:str):
- with db() as c:g=c.execute("SELECT * FROM generations WHERE public_token=? AND provider='seedance-2.0'",(token,)).fetchone()
+ with db() as c:g=c.execute("SELECT * FROM generations WHERE public_token=? AND provider='ltx-2.3-22b-distilled'",(token,)).fetchone()
  if not g:raise HTTPException(404,"Generation not found")
  if g["status"] in ("queued","processing","submitting"):
   try:
-   s=seedance.status(g["provider_request_id"],g["resolution"])
+   s=ltx.status(g["provider_request_id"],g["resolution"])
   except Exception as e:
    return {"generation_id":g["id"],"status":g["status"],"error":str(e)[:500]}
   if s["status"]=="processing":
@@ -354,4 +354,4 @@ async def webhook(req:Request):
  return {"ok":True}
 
 @APP.get("/api/config")
-def config():return {"version":"6.0","price_rub":PRICE,"premium_video_seconds":PREMIUM_VIDEO_SECONDS,"free_video_trial_seconds":FREE_VIDEO_TRIAL_SECONDS,"ai_upscale":bool(os.getenv("AI_UPSCALE_URL") and os.getenv("AI_UPSCALE_TOKEN")),"animation":seedance.configured(),"payments":(yookassa.configured() if os.getenv("PAYMENT_PROVIDER","manual").lower()=="yookassa" else bool(os.getenv("PAYMENT_API_URL") and os.getenv("PAYMENT_API_TOKEN")))}
+def config():return {"version":"6.0","price_rub":PRICE,"premium_video_seconds":PREMIUM_VIDEO_SECONDS,"free_video_trial_seconds":FREE_VIDEO_TRIAL_SECONDS,"ai_upscale":bool(os.getenv("AI_UPSCALE_URL") and os.getenv("AI_UPSCALE_TOKEN")),"animation":ltx.configured(),"payments":(yookassa.configured() if os.getenv("PAYMENT_PROVIDER","manual").lower()=="yookassa" else bool(os.getenv("PAYMENT_API_URL") and os.getenv("PAYMENT_API_TOKEN")))}
