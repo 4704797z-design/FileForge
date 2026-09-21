@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 import io,os,sqlite3,time,tempfile,subprocess,zipfile,hmac,hashlib,secrets
 from pathlib import Path
 import bcrypt
@@ -251,6 +254,7 @@ async def animate(req:Request,file:UploadFile=File(...),prompt:str=Form("Slow ci
  try:
   request_id=seedance.submit(b,file.content_type,prompt,duration,resolution,aspect_ratio,generate_audio)
  except Exception as e:
+  logger.exception("Seedance submit failed")
   with db() as c:
    c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(str(e)[:1000],gid))
    if p:c.execute("UPDATE users SET video_seconds_balance=video_seconds_balance+? WHERE id=?",(reserved,u["id"]))
