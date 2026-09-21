@@ -24,4 +24,4 @@ RUN mkdir -p /data
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "uvicorn app.main:APP --host 0.0.0.0 --port $PORT --proxy-headers"]
+CMD ["uvicorn", "app.main:APP", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
