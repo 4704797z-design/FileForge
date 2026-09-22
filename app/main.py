@@ -115,12 +115,12 @@ def site_requisites():
  return {"name":os.getenv("SELLER_NAME",""),"inn":os.getenv("SELLER_INN",""),"email":os.getenv("SELLER_EMAIL","")}
 @APP.get("/robots.txt",include_in_schema=False)
 def robots():
- return Response("User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://fileforge.ru/sitemap.xml\n",media_type="text/plain")
+ return Response("User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://file-forge.ru/sitemap.xml\n",media_type="text/plain")
 @APP.get("/sitemap.xml",include_in_schema=False)
 def sitemap():
  return Response("""<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
- <url><loc>https://fileforge.ru/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+ <url><loc>https://file-forge.ru/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
 </urlset>""",media_type="application/xml")
 @APP.get("/health")
 def health():return {"status":"ok","version":"6.0"}
