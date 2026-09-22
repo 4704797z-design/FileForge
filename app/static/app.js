@@ -54,7 +54,16 @@ async function generateImage(){
   await downloadBlob(await r.blob(),"fileforge-generated.png");
   setTask(id,"completed");setTimeout(()=>removeTask(id),6000);
   toast("✓ Изображение сгенерировано — скачивание началось");
- }catch(e){setTask(id,"failed");setTimeout(()=>removeTask(id),8000);toast(e.message)}
+ }catch(e){setTask(id,"failed");setTimeout(()=>removeTask(id),8000);limitToast(e.message)}
+}
+function limitToast(msg){
+ const t=$("toast");
+ if(!t)return toast(msg);
+ const isLimit=/лимит|402|Payment/i.test(msg||"");
+ if(!isLimit)return toast(msg);
+ t.innerHTML=`<div class="limit-box">⚠️ ${esc(msg)}<br><a href="#premium" onclick="setTimeout(()=>location.reload(),100)">✦ Оформить Premium — 30 картинок и 30 AI-секунд в месяц</a></div>`;
+ t.classList.add("show");
+ clearTimeout(t._hide);t._hide=setTimeout(()=>t.classList.remove("show"),9000);
 }
 async function editImage(){
  const f=$("edit")?.files?.[0]; if(!f)return toast("Сначала выберите изображение");
@@ -67,7 +76,7 @@ async function editImage(){
   await downloadBlob(await r.blob(),"fileforge-edited.png");
   setTask(id,"completed");setTimeout(()=>removeTask(id),6000);
   toast("✓ Готово — файл подготовлен к скачиванию");
- }catch(e){setTask(id,"failed");setTimeout(()=>removeTask(id),8000);toast(e.message)}
+ }catch(e){setTask(id,"failed");setTimeout(()=>removeTask(id),8000);limitToast(e.message)}
 }
 async function animatePhoto(){
  const f=$("anim")?.files?.[0]; if(!f)return toast("Сначала выберите фото");
@@ -95,7 +104,7 @@ async function animatePhoto(){
    if(s.status==="failed")throw Error(s.error||"Wan 3.0 generation failed");
   }
   throw Error("Генерация выполняется слишком долго. Попробуйте проверить позже.");
- }catch(e){setTask(id,"failed");setTimeout(()=>removeTask(id),10000);toast(e.message)}
+ }catch(e){setTask(id,"failed");setTimeout(()=>removeTask(id),10000);limitToast(e.message)}
 }
 let authMode="login";
 function setAuthMode(mode){

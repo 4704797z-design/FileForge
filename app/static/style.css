@@ -107,6 +107,10 @@ footer .brand{font-size:18px}
 .hi-date{color:#6f7789;font-size:9px}
 .hi-dl{flex:0 0 auto;width:26px;height:26px;display:grid;place-items:center;border:1px solid rgba(100,214,161,.3);border-radius:7px;color:var(--green)!important;font-weight:800;transition:.2s}
 .hi-dl:hover{background:rgba(100,214,161,.14);transform:translateY(-1px)}
+/* Limit-reached toast with Premium CTA */
+#toast .limit-box{display:block;text-align:left;background:rgba(255,150,60,.12);border:1px solid rgba(255,150,60,.4);border-radius:12px;padding:14px 16px;color:#ffd8ad;font-size:12px;line-height:1.6;max-width:320px;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+#toast .limit-box a{color:#c9a6ff;font-weight:700;text-decoration:none;border-bottom:1px dashed rgba(201,166,255,.5)}
+#toast .limit-box a:hover{color:#e2d0ff;border-bottom-color:#e2d0ff}
 
 @media(max-width:600px){
   .nav{height:72px}
