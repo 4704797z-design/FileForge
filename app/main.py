@@ -249,7 +249,7 @@ async def animate(req:Request,file:UploadFile=File(...),prompt:str=Form("Slow ci
  token=secrets.token_urlsafe(24);now=int(time.time())
  with db() as c:
   x=c.execute("""INSERT INTO generations(user_id,public_token,status,provider,prompt,input_filename,duration,resolution,aspect_ratio,generate_audio,created_at)
-                 VALUES(?,?,?,?,?,?,?,?,?,?,?)""",(u["id"],token,"submitting","ltx-2.3-22b-distilled",prompt.strip(),file.filename or "photo",duration,resolution,aspect_ratio,int(generate_audio),now))
+                 VALUES(?,?,?,?,?,?,?,?,?,?,?)""",(u["id"],token,"submitting","mixen-wan-3.0",prompt.strip(),file.filename or "photo",duration,resolution,aspect_ratio,int(generate_audio),now))
   gid=x.lastrowid
  try:
   request_id=mixen.submit(b,file.content_type,prompt,duration,resolution,aspect_ratio,generate_audio)
@@ -281,7 +281,7 @@ def animation_status(token:str):
    return {"generation_id":g["id"],"status":"completed","video":video,"seed":s.get("seed")}
   if s["status"]=="failed":
    with db() as c:c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(s.get("error","Mixen generation failed"),g["id"]))
-   return {"generation_id":g["id"],"status":"failed","error":s.get("error","LTX-2.3 generation failed")}
+   return {"generation_id":g["id"],"status":"failed","error":s.get("error","Mixen generation failed")}
  if g["status"]=="completed":
   return {"generation_id":g["id"],"status":"completed","video":{"url":g["video_url"]}}
  return {"generation_id":g["id"],"status":g["status"],"error":g["error"]}
