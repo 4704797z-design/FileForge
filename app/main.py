@@ -12,7 +12,7 @@ from itsdangerous import URLSafeTimedSerializer
 from PIL import Image,ImageEnhance
 from pypdf import PdfReader,PdfWriter
 from pdf2image import convert_from_bytes
-from app.services import ltx,yookassa,email as email_service
+from app.services import mixen,yookassa,email as email_service
 
 APP=FastAPI(title="FileForge",version="6.0")
 DATA=Path(os.getenv("DATABASE","/data/fileforge.db"));DATA.parent.mkdir(parents=True,exist_ok=True)
@@ -225,12 +225,12 @@ async def animate(req:Request,file:UploadFile=File(...),prompt:str=Form("Slow ci
  u=user(req)
  if not u:raise HTTPException(401,"Для AI-видео сначала создайте аккаунт")
  if REQUIRE_EMAIL_VERIFICATION and not u["email_verified"]:raise HTTPException(403,"Для AI-видео подтвердите email")
- if not ltx.configured():raise HTTPException(503,"LTX provider is not configured")
+ if not mixen.configured():raise HTTPException(503,"Mixen provider is not configured")
  b=await file.read();check(b)
- if len(b)>30*1024*1024:raise HTTPException(413,"LTX accepts images up to 30 MB")
+ if len(b)>30*1024*1024:raise HTTPException(413,"Mixen accepts images up to 30 MB")
  im(b)
  try:
-  ltx.validate_options(prompt,duration,resolution,aspect_ratio);seconds=int(duration)
+  mixen.validate_options(prompt,duration,resolution,aspect_ratio);seconds=int(duration)
  except (ValueError,TypeError) as e:raise HTTPException(400,str(e))
  limit(req)
  p=premium_active(u);reserved=video_cost_seconds(duration,resolution) if p else 0;trial_reserved=False
@@ -252,24 +252,24 @@ async def animate(req:Request,file:UploadFile=File(...),prompt:str=Form("Slow ci
                  VALUES(?,?,?,?,?,?,?,?,?,?,?)""",(u["id"],token,"submitting","ltx-2.3-22b-distilled",prompt.strip(),file.filename or "photo",duration,resolution,aspect_ratio,int(generate_audio),now))
   gid=x.lastrowid
  try:
-  request_id=ltx.submit(b,file.content_type,prompt,duration,resolution,aspect_ratio,generate_audio)
+  request_id=mixen.submit(b,file.content_type,prompt,duration,resolution,aspect_ratio,generate_audio)
  except Exception as e:
-  logger.exception("LTX submit failed")
+  logger.exception("Mixen submit failed")
   with db() as c:
    c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(str(e)[:1000],gid))
    if p:c.execute("UPDATE users SET video_seconds_balance=video_seconds_balance+? WHERE id=?",(reserved,u["id"]))
    elif trial_reserved:c.execute("UPDATE users SET video_trial_used=0 WHERE id=?",(u["id"],))
-  raise HTTPException(502,"LTX-2.3 request could not be submitted")
+  raise HTTPException(502,"Mixen video request could not be submitted")
  with db() as c:c.execute("UPDATE generations SET status='queued',provider_request_id=? WHERE id=?",(request_id,gid))
  return {"generation_id":gid,"token":token,"status":"queued","provider_request_id":request_id,"video_seconds_charged":reserved if p else seconds}
 
 @APP.get("/api/photo/animate/{token}")
 def animation_status(token:str):
- with db() as c:g=c.execute("SELECT * FROM generations WHERE public_token=? AND provider='ltx-2.3-22b-distilled'",(token,)).fetchone()
+ with db() as c:g=c.execute("SELECT * FROM generations WHERE public_token=? AND provider='mixen-wan-3.0'",(token,)).fetchone()
  if not g:raise HTTPException(404,"Generation not found")
  if g["status"] in ("queued","processing","submitting"):
   try:
-   s=ltx.status(g["provider_request_id"],g["resolution"])
+   s=mixen.status(g["provider_request_id"],g["resolution"])
   except Exception as e:
    return {"generation_id":g["id"],"status":g["status"],"error":str(e)[:500]}
   if s["status"]=="processing":
@@ -280,7 +280,7 @@ def animation_status(token:str):
    with db() as c:c.execute("UPDATE generations SET status='completed',completed_at=?,video_url=? WHERE id=?",(int(time.time()),video["url"],g["id"]))
    return {"generation_id":g["id"],"status":"completed","video":video,"seed":s.get("seed")}
   if s["status"]=="failed":
-   with db() as c:c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(s.get("error","LTX-2.3 generation failed"),g["id"]))
+   with db() as c:c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(s.get("error","Mixen generation failed"),g["id"]))
    return {"generation_id":g["id"],"status":"failed","error":s.get("error","LTX-2.3 generation failed")}
  if g["status"]=="completed":
   return {"generation_id":g["id"],"status":"completed","video":{"url":g["video_url"]}}
@@ -289,8 +289,13 @@ def animation_status(token:str):
 def animation_download(token:str):
  with db() as c:g=c.execute("SELECT * FROM generations WHERE public_token=? AND status='completed'",(token,)).fetchone()
  if not g or not g["video_url"]:raise HTTPException(404,"Video is not ready")
+ headers={}
+ if g["provider"]=="mixen-wan-3.0":
+  key=os.getenv("MIXEN_API_KEY","")
+  if not key:raise HTTPException(503,"Mixen provider is not configured")
+  headers["Authorization"]=f"Bearer {key}"
  try:
-  r=requests.get(g["video_url"],timeout=120)
+  r=requests.get(g["video_url"],headers=headers,timeout=180)
  except requests.RequestException:raise HTTPException(502,"Video download failed")
  if r.status_code>=400:raise HTTPException(502,"Video provider returned an error")
  return StreamingResponse(io.BytesIO(r.content),media_type="video/mp4",headers={"Content-Disposition":'attachment; filename="fileforge-animation.mp4"'})
@@ -354,4 +359,4 @@ async def webhook(req:Request):
  return {"ok":True}
 
 @APP.get("/api/config")
-def config():return {"version":"6.0","price_rub":PRICE,"premium_video_seconds":PREMIUM_VIDEO_SECONDS,"free_video_trial_seconds":FREE_VIDEO_TRIAL_SECONDS,"ai_upscale":bool(os.getenv("AI_UPSCALE_URL") and os.getenv("AI_UPSCALE_TOKEN")),"animation":ltx.configured(),"payments":(yookassa.configured() if os.getenv("PAYMENT_PROVIDER","manual").lower()=="yookassa" else bool(os.getenv("PAYMENT_API_URL") and os.getenv("PAYMENT_API_TOKEN")))}
+def config():return {"version":"6.0","price_rub":PRICE,"premium_video_seconds":PREMIUM_VIDEO_SECONDS,"free_video_trial_seconds":FREE_VIDEO_TRIAL_SECONDS,"ai_upscale":bool(os.getenv("AI_UPSCALE_URL") and os.getenv("AI_UPSCALE_TOKEN")),"animation":mixen.configured(),"payments":(yookassa.configured() if os.getenv("PAYMENT_PROVIDER","manual").lower()=="yookassa" else bool(os.getenv("PAYMENT_API_URL") and os.getenv("PAYMENT_API_TOKEN")))}
