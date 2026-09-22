@@ -122,6 +122,42 @@ def submit(
     return str(job_id)
 
 
+def submit_text(
+    prompt: str,
+    duration: str,
+    resolution: str,
+    aspect_ratio: str,
+    generate_audio: bool,
+) -> str:
+    """Text-to-video: create a video job from a prompt only (no input image)."""
+    if not configured():
+        raise RuntimeError("Mixen provider is not configured")
+
+    validate_options(prompt, duration, resolution, aspect_ratio)
+
+    payload = {
+        "model": MODEL,
+        "prompt": prompt.strip(),
+        "seconds": str(int(duration)) if duration != "auto" else "2",
+        "size": size_for(resolution, aspect_ratio),
+    }
+
+    log.info("[AI_REQUEST] POST %s/videos (text) model=%s seconds=%s size=%s",
+             API_BASE, MODEL, payload["seconds"], payload["size"])
+    response = _post_with_retry(f"{API_BASE}/videos", headers=_headers(), json=payload)
+    if response.status_code >= 400:
+        detail = _api_error(response)
+        log.error("[AI_RESPONSE] text-video submit failed %d: %s", response.status_code, detail)
+        raise RuntimeError(f"Mixen API {response.status_code}: {detail}")
+    log.info("[AI_RESPONSE] text-video submit ok")
+
+    job = response.json()
+    job_id = job.get("id")
+    if not job_id:
+        raise RuntimeError("Mixen API returned no video job id")
+    return str(job_id)
+
+
 def status(request_id: str, resolution: str) -> dict:
     try:
         response = requests.get(

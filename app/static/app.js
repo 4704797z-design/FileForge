@@ -78,6 +78,33 @@ async function editImage(){
   toast("✓ Готово — файл подготовлен к скачиванию");
  }catch(e){setTask(id,"failed");setTimeout(()=>removeTask(id),8000);limitToast(e.message)}
 }
+async function createVideo(){
+ const p=$("t2vPrompt")?.value?.trim(); if(!p)return toast("Опишите сцену, которую нужно сгенерировать");
+ const id="t2v-"+Date.now(); addTask(id,"Видео из текста: "+p.slice(0,40));
+ const d=new FormData(); d.append("prompt",p);
+ d.append("duration",$("t2vDuration").value); d.append("resolution",$("t2vResolution").value);
+ d.append("aspect_ratio",$("t2vAspect").value); d.append("generate_audio","true");
+ toast("Отправляем запрос в Wan 3.0…");
+ try{
+  let r=await fetch("/api/video/create",{method:"POST",body:d}),j=await r.json().catch(()=>({}));
+  if(!r.ok)throw Error(j.detail||"Не удалось запустить генерацию");
+  const token=j.token;let last="";
+  for(let i=0;i<240;i++){
+   await new Promise(x=>setTimeout(x,3000));
+   const s=await (await fetch("/api/photo/animate/"+encodeURIComponent(token))).json();
+   if(s.status!==last){last=s.status;toast(s.status==="processing"?"Wan 3.0 генерирует видео…":s.status==="queued"?"Запрос в очереди…":"Проверяем результат…")}
+   if(typeof s.progress==="number")setTask(id,s.status,s.progress);else setTask(id,s.status);
+   if(s.status==="completed"){
+    const b=await (await fetch("/api/photo/animate/"+encodeURIComponent(token)+"/download")).blob();
+    await downloadBlob(b,"fileforge-video.mp4");
+    setTask(id,"completed");setTimeout(()=>removeTask(id),6000);loadHistory();
+    toast("✓ Видео готово — скачивание началось");return;
+   }
+   if(s.status==="failed")throw Error(s.error||"Wan 3.0 generation failed");
+  }
+  throw Error("Генерация выполняется слишком долго. Попробуйте проверить позже.");
+ }catch(e){setTask(id,"failed");setTimeout(()=>removeTask(id),10000);limitToast(e.message)}
+}
 async function animatePhoto(){
  const f=$("anim")?.files?.[0]; if(!f)return toast("Сначала выберите фото");
  const prompt=$("animPrompt")?.value?.trim(); if(!prompt)return toast("Опишите, какое движение должно быть на видео");

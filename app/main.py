@@ -325,6 +325,46 @@ async def animate(req:Request,file:UploadFile=File(...),prompt:str=Form("Slow ci
  with db() as c:c.execute("UPDATE generations SET status='queued',provider_request_id=? WHERE id=?",(request_id,gid))
  return {"generation_id":gid,"token":token,"status":"queued","provider_request_id":request_id,"video_seconds_charged":reserved if p else seconds}
 
+@APP.post("/api/video/create")
+def video_create(req:Request,prompt:str=Form(...),duration:str=Form("5"),resolution:str=Form("720p"),aspect_ratio:str=Form("16:9"),generate_audio:bool=Form(True)):
+ u=user(req)
+ if not u:raise HTTPException(401,"Для AI-видео сначала создайте аккаунт")
+ if REQUIRE_EMAIL_VERIFICATION and not u["email_verified"]:raise HTTPException(403,"Для AI-видео подтвердите email")
+ if not mixen.configured():raise HTTPException(503,"Mixen provider is not configured")
+ try:
+  mixen.validate_options(prompt,duration,resolution,aspect_ratio);seconds=int(duration)
+ except (ValueError,TypeError) as e:raise HTTPException(400,str(e))
+ limit(req)
+ p=premium_active(u);reserved=video_cost_seconds(duration,resolution) if p else 0;trial_reserved=False
+ if not p:
+  if resolution!="720p":raise HTTPException(400,"Для Free-доступа доступно только 720p")
+  if seconds>FREE_VIDEO_TRIAL_SECONDS:raise HTTPException(402,f"Бесплатный пробный лимит — {FREE_VIDEO_TRIAL_SECONDS} секунд AI-видео")
+  with db() as c:
+   changed=c.execute("UPDATE users SET video_trial_used=1 WHERE id=? AND video_trial_used=0",(u["id"],)).rowcount
+  if changed!=1:raise HTTPException(402,"Пробный AI-лимит уже использован")
+  trial_reserved=True
+ else:
+  if u["video_seconds_balance"]<reserved:raise HTTPException(402,f"Недостаточно AI-секунд. Осталось {u['video_seconds_balance']} сек., нужно {reserved}")
+  with db() as c:
+   changed=c.execute("UPDATE users SET video_seconds_balance=video_seconds_balance-? WHERE id=? AND video_seconds_balance>=?",(reserved,u["id"],reserved)).rowcount
+  if changed!=1:raise HTTPException(402,"Недостаточно AI-секунд")
+ token=secrets.token_urlsafe(24);now=int(time.time())
+ with db() as c:
+  x=c.execute("""INSERT INTO generations(user_id,public_token,status,provider,prompt,input_filename,duration,resolution,aspect_ratio,generate_audio,created_at)
+                 VALUES(?,?,?,?,?,?,?,?,?,?,?)""",(u["id"],token,"submitting","mixen-wan-3.0",prompt.strip(),"(text-to-video)",duration,resolution,aspect_ratio,int(generate_audio),now))
+  gid=x.lastrowid
+ try:
+  request_id=mixen.submit_text(prompt,duration,resolution,aspect_ratio,generate_audio)
+ except Exception as e:
+  logger.exception("Mixen text-video submit failed")
+  with db() as c:
+   c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(str(e)[:1000],gid))
+   if p:c.execute("UPDATE users SET video_seconds_balance=video_seconds_balance+? WHERE id=?",(reserved,u["id"]))
+   elif trial_reserved:c.execute("UPDATE users SET video_trial_used=0 WHERE id=?",(u["id"],))
+  raise HTTPException(502,str(e)[:500] or "Mixen video request could not be submitted")
+ with db() as c:c.execute("UPDATE generations SET status='queued',provider_request_id=? WHERE id=?",(request_id,gid))
+ return {"generation_id":gid,"token":token,"status":"queued","provider_request_id":request_id,"video_seconds_charged":reserved if p else seconds}
+
 @APP.get("/api/photo/animate/{token}")
 def animation_status(token:str):
  with db() as c:g=c.execute("SELECT * FROM generations WHERE public_token=? AND provider='mixen-wan-3.0'",(token,)).fetchone()
