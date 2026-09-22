@@ -85,7 +85,7 @@ def premium_active(u):
 
 def video_cost_seconds(duration,resolution):
  seconds=int(duration)
- multiplier=3 if resolution=="1080p" else 1
+ multiplier=2 if resolution=="1080p" else 1
  return seconds*multiplier
 
 def grant_premium(c,user_id):
