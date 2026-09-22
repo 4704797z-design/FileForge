@@ -44,6 +44,10 @@ def test_register_login_session(client):
     assert r.status_code == 200
     assert client.get("/api/me").json()["authenticated"] is True
 
+def test_long_password_rejected(client):
+    r = client.post("/api/auth/register", data={"email":"longpw@example.com","password":"x"*73,"password_confirm":"x"*73,"accept_terms":"true"})
+    assert r.status_code == 400
+
 def test_image_operations(client):
     payload = {"file": ("test.png", png_bytes(), "image/png")}
     r = client.post("/api/image/convert", files=payload, data={"fmt":"webp"})
@@ -54,32 +58,45 @@ def test_image_operations(client):
     assert r.status_code == 200
     with Image.open(io.BytesIO(r.content)) as out: assert out.size == (32, 24)
 
-def test_pdf_operations(client):
+def test_pdf_merge_and_images_to_pdf(client):
     pdf = pdf_bytes(); payload = {"file": ("test.pdf", pdf, "application/pdf")}
     r = client.post("/api/pdf/merge", files=[("files", payload["file"])]); assert r.status_code == 200
-    r = client.post("/api/pdf/to-images", files=payload, data={"fmt":"png"}); assert r.status_code == 200
     r = client.post("/api/images/to-pdf", files=[("files", ("page.png", png_bytes(), "image/png"))]); assert r.status_code == 200
-    r = client.post("/api/pdf/to-djvu", files=payload); assert r.status_code == 200
+    r = client.post("/api/pdf/to-djvu", files=payload)
+    if r.status_code == 503:
+        pytest.skip("pdf2djvu not installed on host (available in Docker)")
+    assert r.status_code == 200
     djvu = r.content; assert djvu.startswith(b"AT&TFORM")
     r = client.post("/api/djvu/to-pdf", files={"file":("test.djvu", djvu, "image/vnd.djvu")}); assert r.status_code == 200
+
+def test_pdf_to_images_needs_poppler(client, monkeypatch):
+    import app.main as main
+    monkeypatch.setattr(main, "convert_from_bytes", lambda *a, **k: [Image.new("RGB", (10, 10))])
+    r = client.post("/api/pdf/to-images", files={"file": ("test.pdf", pdf_bytes(), "application/pdf")}, data={"fmt":"png"})
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/png"
 
 def test_invalid_image_is_rejected(client):
     r = client.post("/api/image/convert", files={"file":("bad.txt",b"not an image","text/plain")}, data={"fmt":"png"})
     assert r.status_code == 400
 
+def _mock_mixen(monkeypatch):
+    import app.main as main
+    monkeypatch.setattr(main.mixen, "configured", lambda: True)
+    monkeypatch.setattr(main.mixen, "submit", lambda *args, **kwargs: "req-test-123")
+
 def test_animation_requires_provider(client, monkeypatch):
-    monkeypatch.delenv("FAL_KEY", raising=False)
+    import app.main as main
+    monkeypatch.setattr(main.mixen, "configured", lambda: False)
     client.post("/api/auth/register", data={"email":"anim-provider@example.com","password":"password123","password_confirm":"password123","accept_terms":"true"})
     r = client.post("/api/photo/animate", files={"file":("test.png", png_bytes(), "image/png")}, data={"prompt":"slow camera movement"})
     assert r.status_code == 503
 
 def test_animation_queue_and_status(client, monkeypatch):
-    monkeypatch.setenv("FAL_KEY", "test-key")
+    _mock_mixen(monkeypatch)
     import app.main as main
-    monkeypatch.setattr(main.seedance, "configured", lambda: True)
-    monkeypatch.setattr(main.seedance, "submit", lambda *args, **kwargs: "req-test-123")
     states = [{"status":"processing"}, {"status":"completed","video":{"url":"https://example.invalid/video.mp4","content_type":"video/mp4"},"seed":7}]
-    monkeypatch.setattr(main.seedance, "status", lambda *args, **kwargs: states.pop(0))
+    monkeypatch.setattr(main.mixen, "status", lambda *args, **kwargs: states.pop(0))
     client.post("/api/auth/register", data={"email":"anim-queue@example.com","password":"password123","password_confirm":"password123","accept_terms":"true"})
     payload = {"file":("test.png", png_bytes(), "image/png")}
     r = client.post("/api/photo/animate", files=payload, data={"prompt":"slow camera movement","duration":"5","resolution":"720p","aspect_ratio":"auto","generate_audio":"true"})
@@ -91,12 +108,43 @@ def test_animation_queue_and_status(client, monkeypatch):
     assert result["video"]["url"].startswith("https://")
 
 def test_animation_rejects_bad_options(client, monkeypatch):
-    monkeypatch.setenv("FAL_KEY", "test-key")
-    import app.main as main
-    monkeypatch.setattr(main.seedance, "configured", lambda: True)
+    _mock_mixen(monkeypatch)
     client.post("/api/auth/register", data={"email":"anim-options@example.com","password":"password123","password_confirm":"password123","accept_terms":"true"})
     r = client.post("/api/photo/animate", files={"file":("test.png", png_bytes(), "image/png")}, data={"prompt":"x","duration":"99"})
     assert r.status_code == 400
+
+def test_animation_submit_failure_refunds_trial(client, monkeypatch):
+    import app.main as main
+    monkeypatch.setattr(main.mixen, "configured", lambda: True)
+    def boom(*a, **k):
+        raise RuntimeError("Mixen API 422: seconds must be a string")
+    monkeypatch.setattr(main.mixen, "submit", boom)
+    client.post("/api/auth/register", data={"email":"anim-fail@example.com","password":"password123","password_confirm":"password123","accept_terms":"true"})
+    r = client.post("/api/photo/animate", files={"file":("test.png", png_bytes(), "image/png")}, data={"prompt":"slow camera movement","duration":"5","resolution":"720p","aspect_ratio":"auto","generate_audio":"false"})
+    assert r.status_code == 502
+    assert "Mixen API 422" in r.json()["detail"]
+    me = client.get("/api/me").json()
+    assert me["video_trial_remaining"] == 5
+
+def test_mixen_submit_sends_seconds_as_string(monkeypatch):
+    import app.services.mixen as mixen
+    monkeypatch.setenv("MIXEN_API_KEY", "test-key")
+    monkeypatch.setattr(mixen.requests, "post", lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not be called")))
+    class Response:
+        status_code = 200
+        def json(self):
+            return {"id": "job-123"}
+    seen = {}
+    def fake_post(url, headers, json, timeout):
+        seen.update({"url":url,"json":json})
+        return Response()
+    monkeypatch.setattr(mixen.requests, "post", fake_post)
+    request_id = mixen.submit(png_bytes(), "image/png", "slow camera movement", "5", "720p", "auto", True)
+    assert request_id == "job-123"
+    assert seen["url"].endswith("/videos")
+    assert seen["json"]["seconds"] == "5"
+    assert seen["json"]["model"] == "alibaba/wan-3.0"
+    assert seen["json"]["input_reference"]["image_url"].startswith("data:image/png;base64,")
 
 def test_yookassa_payment_flow_is_verified_and_idempotent(client, monkeypatch):
     monkeypatch.setenv("PAYMENT_PROVIDER", "yookassa")
@@ -116,43 +164,30 @@ def test_yookassa_payment_flow_is_verified_and_idempotent(client, monkeypatch):
     assert r.status_code == 200
     assert r.json()["idempotent"] is True
 
-def test_seedance_submit_uses_fal_upload(monkeypatch):
-    import app.services.seedance as seedance
-    monkeypatch.setenv("FAL_KEY", "test-key")
-    monkeypatch.setattr(seedance.fal_client, "upload_file", lambda path: "https://fal.example/input.png")
-    class Handle:
-        request_id = "req-upload-test"
-    seen = {}
-    def fake_submit(model, arguments):
-        seen["model"] = model
-        seen["arguments"] = arguments
-        return Handle()
-    monkeypatch.setattr(seedance.fal_client, "submit", fake_submit)
-    request_id = seedance.submit(png_bytes(), "image/png", "slow camera movement", "5", "720p", "auto", True)
-    assert request_id == "req-upload-test"
-    assert seen["model"] == "bytedance/seedance-2.0/fast/image-to-video"
-    assert seen["arguments"]["image_url"] == "https://fal.example/input.png"
-
 def test_registration_requires_password_confirmation_and_terms(client):
     r = client.post("/api/auth/register", data={"email":"bad@example.com","password":"password123","password_confirm":"nope","accept_terms":"false"})
     assert r.status_code == 400
     assert "Пароли не совпадают" in r.json()["detail"]
 
 def test_free_video_trial_is_limited_and_account_required(client, monkeypatch):
-    monkeypatch.setenv("FAL_KEY", "test-key")
-    import app.main as main
-    monkeypatch.setattr(main.seedance, "configured", lambda: True)
-    monkeypatch.setattr(main.seedance, "submit", lambda *args, **kwargs: "req-free")
+    _mock_mixen(monkeypatch)
     client.post("/api/auth/register", data={"email":"free@example.com","password":"password123","password_confirm":"password123","accept_terms":"true"})
     r = client.post("/api/photo/animate", files={"file":("test.png",png_bytes(),"image/png")}, data={"prompt":"slow camera movement","duration":"5","resolution":"720p","aspect_ratio":"auto","generate_audio":"false"})
     assert r.status_code == 200
     r = client.post("/api/photo/animate", files={"file":("test.png",png_bytes(),"image/png")}, data={"prompt":"slow camera movement","duration":"5","resolution":"720p","aspect_ratio":"auto","generate_audio":"false"})
     assert r.status_code == 402
 
-def test_verify_email_flow(client, monkeypatch):
+def test_verify_email_flow(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATABASE", str(tmp_path / "ff-verify.db"))
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-please-use-a-real-secret-in-production")
     monkeypatch.setenv("EMAIL_VERIFICATION_ENABLED", "true")
     monkeypatch.setenv("REQUIRE_EMAIL_VERIFICATION", "true")
+    monkeypatch.setenv("ANON_DAILY_LIMIT", "50")
+    monkeypatch.setenv("USER_DAILY_LIMIT", "50")
+    import importlib
     import app.main as main
+    importlib.reload(main)
+    client = TestClient(main.APP)
     sent = {}
     monkeypatch.setattr(main, "send_verification_email", lambda email, token: sent.update({"email":email,"token":token}) or True)
     r = client.post("/api/auth/register", data={"email":"verify@example.com","password":"password123","password_confirm":"password123","accept_terms":"true"})

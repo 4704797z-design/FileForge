@@ -2,6 +2,31 @@ const $=x=>document.getElementById(x);
 function toast(x){let t=$("toast");t.textContent=x;t.style.display="block";clearTimeout(window.__toast);window.__toast=setTimeout(()=>t.style.display="none",4200)}
 function sizeLabel(n){if(n<1024)return `${n} Б`;if(n<1024*1024)return `${(n/1024).toFixed(1)} КБ`;return `${(n/1024/1024).toFixed(2)} МБ`}
 async function run(url,id,p){let f=$(id)?.files?.[0];if(!f)return toast("Сначала выберите файл");let d=new FormData();d.append("file",f);for(let[k,v]of Object.entries(p||{}))d.append(k,v);toast("Обрабатываем файл…");try{let r=await fetch(url,{method:"POST",body:d});if(!r.ok){let j=await r.json().catch(()=>({}));throw Error(j.detail||"Ошибка обработки")};let b=await r.blob(),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=(r.headers.get("content-disposition")||"").match(/filename="([^"]+)"/)?.[1]||"result";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);if(url==="/api/image/compress"){let diff=Math.round((1-b.size/f.size)*100);toast(diff>0?`✓ Сжато: ${sizeLabel(f.size)} → ${sizeLabel(b.size)} (−${diff}%)`:`✓ Готово: ${sizeLabel(f.size)} → ${sizeLabel(b.size)}`)}else{toast("✓ Готово — файл подготовлен к скачиванию")}}catch(e){toast(e.message)}}
+async function generateImage(){
+ const p=$("genPrompt")?.value?.trim(); if(!p)return toast("Опишите, что нужно сгенерировать");
+ toast("Генерируем изображение через AI… (до 1-2 минут)");
+ try{
+  let d=new FormData(); d.append("prompt",p); d.append("size","1000x1000");
+  let r=await fetch("/api/image/generate",{method:"POST",body:d});
+  if(!r.ok){let j=await r.json().catch(()=>({}));throw Error(j.detail||"Ошибка генерации")}
+  let b=await r.blob(),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="fileforge-generated.png";
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  toast("✓ Изображение сгенерировано — скачивание началось");
+ }catch(e){toast(e.message)}
+}
+async function editImage(){
+ const f=$("edit")?.files?.[0]; if(!f)return toast("Сначала выберите изображение");
+ const p=$("editPrompt")?.value?.trim(); if(!p)return toast("Опишите, что нужно изменить");
+ toast("AI редактирует изображение… (до 1-2 минут)");
+ try{
+  let d=new FormData(); d.append("file",f); d.append("prompt",p);
+  let r=await fetch("/api/image/ai-edit",{method:"POST",body:d});
+  if(!r.ok){let j=await r.json().catch(()=>({}));throw Error(j.detail||"Ошибка редактирования")}
+  let b=await r.blob(),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="fileforge-edited.png";
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  toast("✓ Готово — файл подготовлен к скачиванию");
+ }catch(e){toast(e.message)}
+}
 async function animatePhoto(){
  const f=$("anim")?.files?.[0]; if(!f)return toast("Сначала выберите фото");
  const prompt=$("animPrompt")?.value?.trim(); if(!prompt)return toast("Опишите, какое движение должно быть на видео");
@@ -73,5 +98,5 @@ async function resendVerification(){
 }
 const observer=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add("visible");observer.unobserve(e.target)}}),{threshold:.08});document.querySelectorAll(".reveal").forEach(e=>observer.observe(e));
 ["up","conv","cmp","pdf","djvu","pdjvu","anim"].forEach(id=>{let el=$(id);if(!el)return;el.addEventListener("change",()=>{if(el.files?.[0])el.closest(".tool-card")?.classList.add("has-file")})});
-const q=$("quality"),qv=$("qualityValue");if(q&&qv){q.addEventListener("input",()=>qv.textContent=`${q.value}%`)}
+const q=$("quality"),qv=$("qualityValue");if(q&&qv){const upd=()=>{q.style.setProperty("--fill",q.value+"%");qv.textContent=`${q.value}%`};q.addEventListener("input",upd);upd()}
 load();

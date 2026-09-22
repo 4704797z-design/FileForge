@@ -170,6 +170,38 @@ async def upscale(req:Request,file:UploadFile=File(...),scale:int=Form(2)):
   if r.status_code>=400:raise HTTPException(502,"AI upscale provider error")
   return out(r.content,"ai-upscaled.webp","image/webp")
  x=im(b).convert("RGB").resize((im(b).width*scale,im(b).height*scale),Image.Resampling.LANCZOS);x=ImageEnhance.Sharpness(ImageEnhance.Contrast(x).enhance(1.04)).enhance(1.35);z=io.BytesIO();x.save(z,"WEBP",quality=94);return out(z.getvalue(),"upscaled.webp","image/webp")
+@APP.post("/api/image/generate")
+def image_generate(req:Request,prompt:str=Form(...),size:str=Form("1024x1024")):
+ u=user(req)
+ if not u:raise HTTPException(401,"Для AI-генерации сначала создайте аккаунт")
+ limit(req)
+ prompt=prompt.strip()
+ if len(prompt)<3:raise HTTPException(400,"Опишите, что нужно сгенерировать")
+ if len(prompt)>4000:raise HTTPException(400,"Описание слишком длинное")
+ if not mixen.configured():raise HTTPException(503,"Mixen provider is not configured")
+ try:
+  png=mixen.generate_image(prompt,size)
+ except RuntimeError as e:
+  logger.error("[ERROR] AI image generation failed: %s",e)
+  raise HTTPException(502,str(e)[:500])
+ return out(png,"generated.png","image/png")
+@APP.post("/api/image/ai-edit")
+async def image_ai_edit(req:Request,file:UploadFile=File(...),prompt:str=Form(...)):
+ u=user(req)
+ if not u:raise HTTPException(401,"Для AI-редактирования сначала создайте аккаунт")
+ limit(req)
+ prompt=prompt.strip()
+ if len(prompt)<3:raise HTTPException(400,"Опишите, что нужно изменить")
+ if len(prompt)>4000:raise HTTPException(400,"Описание слишком длинное")
+ if not mixen.configured():raise HTTPException(503,"Mixen provider is not configured")
+ b=await file.read();check(b);im(b)
+ if len(b)>20*1024*1024:raise HTTPException(413,"Изображение для AI-редактирования — максимум 20 МБ")
+ try:
+  png=mixen.edit_image(b,file.content_type,prompt)
+ except RuntimeError as e:
+  logger.error("[ERROR] AI image edit failed: %s",e)
+  raise HTTPException(502,str(e)[:500])
+ return out(png,"edited.png","image/png")
 @APP.post("/api/image/convert")
 async def convert(req:Request,file:UploadFile=File(...),fmt:str=Form("webp")):
  limit(req);b=await file.read();check(b);x=im(b);fmt=fmt.lower()
@@ -259,7 +291,7 @@ async def animate(req:Request,file:UploadFile=File(...),prompt:str=Form("Slow ci
    c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(str(e)[:1000],gid))
    if p:c.execute("UPDATE users SET video_seconds_balance=video_seconds_balance+? WHERE id=?",(reserved,u["id"]))
    elif trial_reserved:c.execute("UPDATE users SET video_trial_used=0 WHERE id=?",(u["id"],))
-  raise HTTPException(502,"Mixen video request could not be submitted")
+  raise HTTPException(502,str(e)[:500] or "Mixen video request could not be submitted")
  with db() as c:c.execute("UPDATE generations SET status='queued',provider_request_id=? WHERE id=?",(request_id,gid))
  return {"generation_id":gid,"token":token,"status":"queued","provider_request_id":request_id,"video_seconds_charged":reserved if p else seconds}
 
@@ -359,4 +391,4 @@ async def webhook(req:Request):
  return {"ok":True}
 
 @APP.get("/api/config")
-def config():return {"version":"6.0","price_rub":PRICE,"premium_video_seconds":PREMIUM_VIDEO_SECONDS,"free_video_trial_seconds":FREE_VIDEO_TRIAL_SECONDS,"ai_upscale":bool(os.getenv("AI_UPSCALE_URL") and os.getenv("AI_UPSCALE_TOKEN")),"animation":mixen.configured(),"payments":(yookassa.configured() if os.getenv("PAYMENT_PROVIDER","manual").lower()=="yookassa" else bool(os.getenv("PAYMENT_API_URL") and os.getenv("PAYMENT_API_TOKEN")))}
+def config():return {"version":"6.0","price_rub":PRICE,"premium_video_seconds":PREMIUM_VIDEO_SECONDS,"free_video_trial_seconds":FREE_VIDEO_TRIAL_SECONDS,"ai_upscale":bool(os.getenv("AI_UPSCALE_URL") and os.getenv("AI_UPSCALE_TOKEN")),"animation":mixen.configured(),"image_ai":mixen.configured(),"payments":(yookassa.configured() if os.getenv("PAYMENT_PROVIDER","manual").lower()=="yookassa" else bool(os.getenv("PAYMENT_API_URL") and os.getenv("PAYMENT_API_TOKEN")))}

@@ -2,11 +2,16 @@
 
 FileForge is a self-hosted web service for common image and document operations. It combines a FastAPI backend, a responsive browser UI, SQLite persistence, Docker deployment, and GitHub Actions CI/CD.
 
-**Current status:** development / self-hosted MVP. Core local file operations are implemented. Production payment processing and external AI services require real provider credentials. Photo animation is integrated with Seedance 2.0 through fal.ai and becomes live when `FAL_KEY` is configured.
+## Current status
+
+**Current status:** development / self-hosted MVP. Core local file operations are implemented. Production payment processing requires real provider credentials. AI features (image generation, image editing, photo animation) are integrated with Mixen (`https://api.mixen.ai/v1`) and become live when `MIXEN_API_KEY` is configured.
 
 ## Features
 
 ### Image tools
+- **AI-генерация изображений** по текстовому описанию (Gemini Image через Mixen, `/api/image/generate`).
+- **AI-редактирование изображений** по текстовому описанию (Mixen `/images/edits`, `/api/image/ai-edit`).
+- **Оживление фото (Image → Video)** — Wan 3.0 через Mixen: асинхронный job, polling статусов, скачивание MP4 (`/api/photo/animate`).
 - Smart Upscale ×2 / ×4. With an external AI adapter it forwards the image to the configured provider; otherwise it uses Pillow resize + sharpening. The fallback is **not generative AI**.
 - JPG / JPEG / PNG / WEBP conversion.
 - JPEG compression with configurable quality.
