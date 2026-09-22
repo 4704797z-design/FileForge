@@ -6,7 +6,7 @@
 <title>Реквизиты — FileForge</title>
 <link rel="stylesheet" href="/static/style.css">
 <style>
-.legal{max-width:900px;margin:80px auto;padding:0 24px 80px}.legal-card{margin-top:28px;padding:30px;border:1px solid var(--line);border-radius:20px;background:rgba(14,16,24,.72)}.legal h1{font-size:56px;letter-spacing:-3px}.legal h2{font-size:24px;margin-top:30px}.legal p,.legal li{color:#aeb6c5;font-size:16px;line-height:1.8}.legal a{color:var(--purple)}.warn{padding:18px;border:1px solid rgba(255,181,107,.3);border-radius:14px;background:rgba(255,181,107,.07);color:#ffd8ad}
+.legal{max-width:900px;margin:80px auto;padding:0 24px 80px}.legal-card{margin-top:28px;padding:30px;border:1px solid var(--line);border-radius:20px;background:rgba(14,16,24,.72)}.legal h1{font-size:56px;letter-spacing:-3px}.legal h2{font-size:24px;margin-top:30px}.legal p,.legal li{color:#aeb6c5;font-size:16px;line-height:1.8}.legal a{color:var(--purple)}.warn{padding:18px;border:1px solid rgba(255,181,107,.3);border-radius:14px;background:rgba(255,181,107,.07);color:#ffd8ad}.req div{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px dashed rgba(255,255,255,.08)}.req div:last-child{border:none}.req span:first-child{color:#8a92a5}.req span:last-child{color:#f0f1f6;font-weight:600;text-align:right}
 </style>
 </head>
 <body>
@@ -14,22 +14,31 @@
 <a href="/">← FileForge</a>
 <h1>Реквизиты</h1>
 <div class="legal-card">
-<div class="warn"><strong>Перед публикацией заполните реальные данные.</strong><br>Эта страница является заготовкой для размещения реквизитов продавца. Не оставляйте шаблонные значения на публичном сайте.</div>
-<h2>Продавец / исполнитель</h2>
-<p><strong>Наименование:</strong> [ФИО / ИП / юридическое лицо]</p>
-<p><strong>ИНН:</strong> [ИНН]</p>
-<p><strong>ОГРНИП / ОГРН:</strong> [номер, если применимо]</p>
-<p><strong>Адрес:</strong> [адрес]</p>
-<p><strong>Email:</strong> [контактный email]</p>
-<p><strong>Телефон:</strong> [телефон]</p>
+<div class="warn" id="fillWarn" style="display:none"><strong>Данные не заполнены.</strong> Укажите SELLER_NAME, SELLER_INN, SELLER_EMAIL в .env и перезапустите сервис.</div>
+<div class="req">
+<div><span>Исполнитель</span><span id="r-name">—</span></div>
+<div><span>ИНН</span><span id="r-inn">—</span></div>
+<div><span>Статус</span><span>Плательщик налога на профессиональный доход (НПД)</span></div>
+<div><span>Email</span><span id="r-email">—</span></div>
+<div><span>Сайт</span><span>https://fileforge.ru</span></div>
+</div>
 <h2>Услуга</h2>
-<p>FileForge предоставляет цифровой доступ к онлайн-инструментам обработки изображений, PDF и DJVU. Тариф Premium — 299 ₽ за 30 дней доступа, согласно условиям публичной оферты.</p>
-<h2>Получение услуги</h2>
-<p>После успешной оплаты доступ к функциям Premium активируется в аккаунте пользователя. Услуга предоставляется в электронном виде через сайт.</p>
+<p>FileForge предоставляет цифровой доступ к онлайн-инструментам обработки изображений, PDF и DJVU, включая AI-генерацию и редактирование изображений, оживление фотографий, конвертацию и сжатие файлов. Тариф Premium — 600 ₽ за 30 дней доступа, согласно условиям публичной оферты.</p>
+<h2>Оплата</h2>
+<p>Оплата производится банковской картой через платёжный сервис ЮKassa (ООО «ЮКАССА»). После успешной оплаты доступ к функциям Premium активируется в аккаунте пользователя автоматически. Услуга предоставляется в электронном виде через сайт.</p>
+<h2>Налоги и чеки</h2>
+<p>Исполнитель применяет специальный налоговый режим «Налог на профессиональный доход» (ФЗ № 422-ФЗ от 27.11.2018). Чек по каждому платежу формируется в приложении «Мой налог» и направляется покупателю. Ставка налога: 4% при расчётах с физическими лицами.</p>
 <h2>Документы</h2>
 <p><a href="/terms">Пользовательское соглашение / оферта</a></p>
 <p><a href="/privacy">Политика конфиденциальности</a></p>
 </div>
 </main>
+<script>
+fetch("/api/site/requisites").then(r=>r.json()).then(d=>{
+  const set=(id,v)=>{const el=document.getElementById(id);if(el&&v)el.textContent=v};
+  set("r-name",d.name);set("r-inn",d.inn);set("r-email",d.email);
+  if(!(d.inn&&d.name))document.getElementById("fillWarn").style.display="block";
+}).catch(()=>{document.getElementById("fillWarn").style.display="block"});
+</script>
 </body>
 </html>

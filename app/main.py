@@ -108,6 +108,11 @@ def sitemap():return '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.or
 def privacy():return Path("app/static/privacy.html").read_text(encoding="utf8")
 @APP.get("/terms",response_class=HTMLResponse)
 def terms():return Path("app/static/terms.html").read_text(encoding="utf8")
+@APP.get("/requisites",response_class=HTMLResponse)
+def requisites():return Path("app/static/requisites.html").read_text(encoding="utf8")
+@APP.get("/api/site/requisites",include_in_schema=False)
+def site_requisites():
+ return {"name":os.getenv("SELLER_NAME",""),"inn":os.getenv("SELLER_INN",""),"email":os.getenv("SELLER_EMAIL","")}
 @APP.get("/robots.txt",include_in_schema=False)
 def robots():
  return Response("User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://fileforge.ru/sitemap.xml\n",media_type="text/plain")
