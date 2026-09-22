@@ -151,7 +151,7 @@ def test_yookassa_payment_flow_is_verified_and_idempotent(client, monkeypatch):
     import app.main as main
     monkeypatch.setattr(main.yookassa, "configured", lambda: True)
     monkeypatch.setattr(main.yookassa, "create_payment", lambda order_id, amount: {"id":"pay-test-1","status":"pending","checkout_url":"https://pay.example/1"})
-    monkeypatch.setattr(main.yookassa, "get_payment", lambda payment_id: {"id":payment_id,"status":"succeeded","amount":{"value":"999.00","currency":"RUB"},"metadata":{"order_id":"1"}})
+    monkeypatch.setattr(main.yookassa, "get_payment", lambda payment_id: {"id":payment_id,"status":"succeeded","amount":{"value":"600.00","currency":"RUB"},"metadata":{"order_id":"1"}})
     client.post("/api/auth/register", data={"email":"pay@example.com","password":"password123","password_confirm":"password123","accept_terms":"true"})
     r = client.post("/api/premium/create")
     assert r.status_code == 200

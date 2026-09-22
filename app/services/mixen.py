@@ -9,7 +9,7 @@ log = logging.getLogger("fileforge.mixen")
 
 API_BASE = os.getenv("MIXEN_API_BASE_URL", "https://api.mixen.ai/v1").rstrip("/")
 MODEL = os.getenv("MIXEN_VIDEO_MODEL", "alibaba/wan-3.0")
-IMAGE_MODEL = os.getenv("MIXEN_IMAGE_MODEL", "gemini-3.1-flash-image-preview")
+IMAGE_MODEL = os.getenv("MIXEN_IMAGE_MODEL", "gemini-3.1-flash-lite-image-preview")
 
 DURATIONS = {"auto", *{str(i) for i in range(2, 31)}}
 RESOLUTION_HEIGHTS = {"480p": 480, "720p": 720, "1080p": 1080}

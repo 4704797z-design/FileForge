@@ -17,8 +17,8 @@ from app.services import mixen,yookassa,email as email_service
 APP=FastAPI(title="FileForge",version="6.0")
 DATA=Path(os.getenv("DATABASE","/data/fileforge.db"));DATA.parent.mkdir(parents=True,exist_ok=True)
 SECRET=os.getenv("SECRET_KEY","dev-secret");SER=URLSafeTimedSerializer(SECRET)
-ANON=int(os.getenv("ANON_DAILY_LIMIT","5"));USER=int(os.getenv("USER_DAILY_LIMIT","20"));PREM=int(os.getenv("PREMIUM_DAILY_LIMIT","200"));MAX=int(os.getenv("MAX_UPLOAD_MB","50"));PRICE=int(os.getenv("PREMIUM_PRICE_RUB","999"))
-PREMIUM_VIDEO_SECONDS=int(os.getenv("PREMIUM_VIDEO_SECONDS","30"));FREE_VIDEO_TRIAL_SECONDS=int(os.getenv("FREE_VIDEO_TRIAL_SECONDS","5"))
+ANON=int(os.getenv("ANON_DAILY_LIMIT","5"));USER=int(os.getenv("USER_DAILY_LIMIT","20"));PREM=int(os.getenv("PREMIUM_DAILY_LIMIT","200"));MAX=int(os.getenv("MAX_UPLOAD_MB","50"));PRICE=int(os.getenv("PREMIUM_PRICE_RUB","600"))
+PREMIUM_VIDEO_SECONDS=int(os.getenv("PREMIUM_VIDEO_SECONDS","30"));FREE_VIDEO_TRIAL_SECONDS=int(os.getenv("FREE_VIDEO_TRIAL_SECONDS","5"));PREMIUM_IMAGE_MONTHLY=int(os.getenv("PREMIUM_IMAGE_MONTHLY","30"));FREE_IMAGE_MONTHLY=int(os.getenv("FREE_IMAGE_MONTHLY","2"))
 EMAIL_VERIFICATION_ENABLED=os.getenv("EMAIL_VERIFICATION_ENABLED","false").lower()=="true";REQUIRE_EMAIL_VERIFICATION=os.getenv("REQUIRE_EMAIL_VERIFICATION","false").lower()=="true"
 APP.mount("/static",StaticFiles(directory="app/static"),name="static")
 
@@ -27,7 +27,7 @@ def db():
 with db() as c:
  c.execute("""CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,email TEXT UNIQUE,password_hash TEXT,premium INTEGER DEFAULT 0,premium_until INTEGER,created_at INTEGER)""")
  columns={r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
- for name,ddl in (("email_verified","INTEGER DEFAULT 0"),("verification_token_hash","TEXT"),("verification_expires_at","INTEGER"),("video_seconds_balance","INTEGER DEFAULT 0"),("video_trial_used","INTEGER DEFAULT 0")):
+ for name,ddl in (("email_verified","INTEGER DEFAULT 0"),("verification_token_hash","TEXT"),("verification_expires_at","INTEGER"),("video_seconds_balance","INTEGER DEFAULT 0"),("video_trial_used","INTEGER DEFAULT 0"),("image_month","TEXT"),("image_count","INTEGER DEFAULT 0")):
   if name not in columns:c.execute(f"ALTER TABLE users ADD COLUMN {name} {ddl}")
  c.execute("""CREATE TABLE IF NOT EXISTS usage(subject TEXT,day TEXT,count INTEGER,PRIMARY KEY(subject,day))""")
  c.execute("""CREATE TABLE IF NOT EXISTS orders(id INTEGER PRIMARY KEY,user_id INTEGER,amount INTEGER,status TEXT,provider_id TEXT,created_at INTEGER,paid_at INTEGER)""")
@@ -41,9 +41,12 @@ def user(req):
   with db() as c:return c.execute("SELECT * FROM users WHERE id=?",(int(d["uid"]),)).fetchone()
  except:return None
 
+def is_premium(u):
+ return bool(u and u["premium"] and (not u["premium_until"] or u["premium_until"]>time.time()))
+
 def limit(req):
  u=user(req); sub=f"user:{u['id']}" if u else f"ip:{req.client.host if req.client else 'unknown'}"
- lim=PREM if u and u["premium"] and (not u["premium_until"] or u["premium_until"]>time.time()) else USER if u else ANON
+ lim=PREM if is_premium(u) else USER if u else ANON
  day=time.strftime("%Y-%m-%d",time.gmtime())
  with db() as c:
   r=c.execute("SELECT count FROM usage WHERE subject=? AND day=?",(sub,day)).fetchone();n=r["count"] if r else 0
@@ -113,7 +116,7 @@ def me(req:Request):
  if not u:return {"authenticated":False,"premium":False,"limit":ANON,"email_verified":False,"video_seconds_remaining":0,"video_trial_remaining":FREE_VIDEO_TRIAL_SECONDS}
  p=premium_active(u)
  remaining=int(u["video_seconds_balance"] or 0) if p else 0
- return {"authenticated":True,"email":u["email"],"premium":p,"premium_until":u["premium_until"],"limit":PREM if p else USER,"email_verified":bool(u["email_verified"]),"email_verification_enabled":EMAIL_VERIFICATION_ENABLED,"video_seconds_remaining":remaining,"video_trial_remaining":0 if u["video_trial_used"] else FREE_VIDEO_TRIAL_SECONDS}
+ return {"authenticated":True,"email":u["email"],"premium":p,"premium_until":u["premium_until"],"limit":PREM if p else USER,"email_verified":bool(u["email_verified"]),"email_verification_enabled":EMAIL_VERIFICATION_ENABLED,"video_seconds_remaining":remaining,"video_trial_remaining":0 if u["video_trial_used"] else FREE_VIDEO_TRIAL_SECONDS,"image_monthly_limit":PREMIUM_IMAGE_MONTHLY if p else FREE_IMAGE_MONTHLY,"image_used":u["image_count"] if u["image_month"]==time.strftime("%Y-%m") else 0}
 @APP.post("/api/auth/register")
 def register(req:Request,email:str=Form(...),password:str=Form(...),password_confirm:str=Form(""),accept_terms:bool=Form(False)):
  email=email.strip().lower()
@@ -170,6 +173,15 @@ async def upscale(req:Request,file:UploadFile=File(...),scale:int=Form(2)):
   if r.status_code>=400:raise HTTPException(502,"AI upscale provider error")
   return out(r.content,"ai-upscaled.webp","image/webp")
  x=im(b).convert("RGB").resize((im(b).width*scale,im(b).height*scale),Image.Resampling.LANCZOS);x=ImageEnhance.Sharpness(ImageEnhance.Contrast(x).enhance(1.04)).enhance(1.35);z=io.BytesIO();x.save(z,"WEBP",quality=94);return out(z.getvalue(),"upscaled.webp","image/webp")
+def image_quota(req,u):
+ """Monthly AI-image quota. Returns 402 when exhausted."""
+ month=time.strftime("%Y-%m")
+ cap=PREMIUM_IMAGE_MONTHLY if is_premium(u) else FREE_IMAGE_MONTHLY
+ with db() as c:
+  row=c.execute("SELECT image_month,image_count FROM users WHERE id=?",(u["id"],)).fetchone()
+  count=row["image_count"] if row and row["image_month"]==month else 0
+  if count>=cap:raise HTTPException(402,f"Лимит AI-изображений исчерпан ({cap}/мес). Premium: {PREMIUM_IMAGE_MONTHLY}/мес")
+  c.execute("UPDATE users SET image_month=?,image_count=? WHERE id=?",(month,count+1,u["id"]))
 @APP.post("/api/image/generate")
 def image_generate(req:Request,prompt:str=Form(...),size:str=Form("1024x1024")):
  u=user(req)
@@ -179,10 +191,12 @@ def image_generate(req:Request,prompt:str=Form(...),size:str=Form("1024x1024")):
  if len(prompt)<3:raise HTTPException(400,"Опишите, что нужно сгенерировать")
  if len(prompt)>4000:raise HTTPException(400,"Описание слишком длинное")
  if not mixen.configured():raise HTTPException(503,"Mixen provider is not configured")
+ image_quota(req,u)
  try:
   png=mixen.generate_image(prompt,size)
  except RuntimeError as e:
   logger.error("[ERROR] AI image generation failed: %s",e)
+  with db() as c:c.execute("UPDATE users SET image_count=MAX(image_count-1,0) WHERE id=?",(u["id"],))
   raise HTTPException(502,str(e)[:500])
  return out(png,"generated.png","image/png")
 @APP.post("/api/image/ai-edit")
@@ -196,10 +210,12 @@ async def image_ai_edit(req:Request,file:UploadFile=File(...),prompt:str=Form(..
  if not mixen.configured():raise HTTPException(503,"Mixen provider is not configured")
  b=await file.read();check(b);im(b)
  if len(b)>20*1024*1024:raise HTTPException(413,"Изображение для AI-редактирования — максимум 20 МБ")
+ image_quota(req,u)
  try:
   png=mixen.edit_image(b,file.content_type,prompt)
  except RuntimeError as e:
   logger.error("[ERROR] AI image edit failed: %s",e)
+  with db() as c:c.execute("UPDATE users SET image_count=MAX(image_count-1,0) WHERE id=?",(u["id"],))
   raise HTTPException(502,str(e)[:500])
  return out(png,"edited.png","image/png")
 @APP.post("/api/image/convert")
