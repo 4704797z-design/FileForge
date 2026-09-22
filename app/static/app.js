@@ -95,8 +95,9 @@ async function createVideo(){
    if(s.status!==last){last=s.status;toast(s.status==="processing"?"Wan 3.0 генерирует видео…":s.status==="queued"?"Запрос в очереди…":"Проверяем результат…")}
    if(typeof s.progress==="number")setTask(id,s.status,s.progress);else setTask(id,s.status);
    if(s.status==="completed"){
-    const b=await (await fetch("/api/photo/animate/"+encodeURIComponent(token)+"/download")).blob();
-    await downloadBlob(b,"fileforge-video.mp4");
+    const dr=await fetch("/api/photo/animate/"+encodeURIComponent(token)+"/download");
+    if(!dr.ok){setTask(id,"failed");setTimeout(()=>removeTask(id),10000);throw Error("Видео готово, но не скачалось — попробуйте скачать из истории")}
+    await downloadBlob(await dr.blob(),"fileforge-video.mp4");
     setTask(id,"completed");setTimeout(()=>removeTask(id),6000);loadHistory();
     toast("✓ Видео готово — скачивание началось");return;
    }
