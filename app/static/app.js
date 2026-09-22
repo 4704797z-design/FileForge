@@ -33,7 +33,9 @@ function renderTasks(){
 async function downloadBlob(b,fname){const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=fname;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 async function loadHistory(){
  try{
-  const j=await(await fetch("/api/photo/history")).json();
+  const r=await fetch("/api/photo/history");
+  if(r.status===401)return;
+  const j=await r.json();
   if(!j.items)return;
   const w=$("historyWrap"),l=$("historyList");
   if(!w)return;
