@@ -146,8 +146,8 @@ def register(req:Request,email:str=Form(...),password:str=Form(...),password_con
  if EMAIL_VERIFICATION_ENABLED:
   try:verification_sent=send_verification_email(email,token)
   except Exception as e:
-   with db() as c:c.execute("DELETE FROM users WHERE id=?",(uid,))
-   raise HTTPException(502,"Не удалось отправить письмо подтверждения") from e
+   logger.error("[ERROR] verification email failed for %s: %s",email,e)
+   logger.error("[ERROR] Account created anyway; user can resend verification from profile")
  r=JSONResponse({"ok":True,"email_verification_enabled":EMAIL_VERIFICATION_ENABLED,"verification_sent":verification_sent,"verification_required":REQUIRE_EMAIL_VERIFICATION});r.set_cookie("ff_session",SER.dumps({"uid":uid}),httponly=True,samesite="lax",secure=os.getenv("COOKIE_SECURE","false").lower()=="true",max_age=2592000);return r
 @APP.get("/api/auth/verify",response_class=HTMLResponse)
 def verify_email(token:str):
