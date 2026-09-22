@@ -8,7 +8,7 @@ async function animatePhoto(){
  const d=new FormData(); d.append("file",f); d.append("prompt",prompt);
  d.append("duration",$("animDuration").value); d.append("resolution",$("animResolution").value);
  d.append("aspect_ratio",$("animAspect").value); d.append("generate_audio",$("animAudio").checked?"true":"false");
- toast("Отправляем запрос в LTX-2.3…");
+ toast("Отправляем запрос в Wan 3.0…");
  try{
   let r=await fetch("/api/photo/animate",{method:"POST",body:d}),j=await r.json().catch(()=>({}));
   if(!r.ok)throw Error(j.detail||"Не удалось запустить генерацию");
@@ -17,13 +17,13 @@ async function animatePhoto(){
   for(let i=0;i<180;i++){
    await new Promise(x=>setTimeout(x,3000));
    const s=await (await fetch("/api/photo/animate/"+encodeURIComponent(token))).json();
-   if(s.status!==last){last=s.status;toast(s.status==="processing"?"LTX-2.3 генерирует видео…":s.status==="queued"?"Запрос в очереди…":"Проверяем результат…");}
+   if(s.status!==last){last=s.status;toast(s.status==="processing"?"Wan 3.0 генерирует видео…":s.status==="queued"?"Запрос в очереди…":"Проверяем результат…");}
    if(s.status==="completed"){
     const b=await (await fetch("/api/photo/animate/"+encodeURIComponent(token)+"/download")).blob();
     const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="fileforge-animation.mp4";
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast("✓ Видео готово — скачивание началось");return;
    }
-   if(s.status==="failed")throw Error(s.error||"LTX-2.3 generation failed");
+   if(s.status==="failed")throw Error(s.error||"Wan 3.0 generation failed");
   }
   throw Error("Генерация выполняется слишком долго. Попробуйте проверить позже.");
  }catch(e){toast(e.message)}
