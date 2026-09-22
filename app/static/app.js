@@ -43,7 +43,7 @@ async function loadHistory(){
   l.innerHTML=j.items.map(it=>`<div class="history-item st-${esc(it.status)}"><span class="hi-status">${it.status==="completed"?"✓":it.status==="failed"?"✕":"◌"}</span><div class="hi-body"><span class="hi-prompt">${esc(it.prompt||"Без описания")}</span><span class="hi-date">${new Date(it.created_at*1000).toLocaleString("ru-RU",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"})}</span></div>${it.status==="completed"?`<a class="hi-dl" href="/api/photo/animate/${encodeURIComponent(it.token)}/download">↓</a>`:""}</div>`).join("");
  }catch{}
 }
-setInterval(loadHistory,10000);loadHistory();
+setInterval(loadHistory,10000);loadHistory();showUsageWarning();
 async function generateImage(){
  const p=$("genPrompt")?.value?.trim(); if(!p)return toast("Опишите, что нужно сгенерировать");
  const id="gen-"+Date.now(); addTask(id,"AI-генерация: "+p.slice(0,40));
@@ -116,6 +116,19 @@ async function buy(){
   toast("Перенаправляем на страницу оплаты ЮKassa…");
   window.location.href=j.checkout_url;
  }catch(e){toast(e.message)}
+}
+async function showUsageWarning(){
+ try{
+  const j=await fetch("/api/me").then(r=>r.json()).catch(()=>null);
+  if(!j||!j.authenticated)return;
+  if(j.premium)return;
+  const im=j.image_monthly_limit??0,iu=j.image_used??0,left=im-iu;
+  if(left<=0&&im>0){
+    limitToast(`Бесплатный лимит AI-изображений исчерпан (${iu} из ${im} в месяц). Для продолжения оформите Premium.`);
+  } else if(left===1&&im>0){
+    toast(`Остался последний бесплатный рисунок (${iu} из ${im} за месяц)`);
+  }
+ }catch{}
 }
 let authMode="login";
 function setAuthMode(mode){
