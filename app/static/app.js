@@ -4,7 +4,14 @@ function sizeLabel(n){if(n<1024)return `${n} Б`;if(n<1024*1024)return `${(n/102
 async function run(url,id,p){let f=$(id)?.files?.[0];if(!f)return toast("Сначала выберите файл");let d=new FormData();d.append("file",f);for(let[k,v]of Object.entries(p||{}))d.append(k,v);toast("Обрабатываем файл…");try{let r=await fetch(url,{method:"POST",body:d});if(!r.ok){let j=await r.json().catch(()=>({}));throw Error(j.detail||"Ошибка обработки")};let b=await r.blob(),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=(r.headers.get("content-disposition")||"").match(/filename="([^"]+)"/)?.[1]||"result";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);if(url==="/api/image/compress"){let diff=Math.round((1-b.size/f.size)*100);toast(diff>0?`✓ Сжато: ${sizeLabel(f.size)} → ${sizeLabel(b.size)} (−${diff}%)`:`✓ Готово: ${sizeLabel(f.size)} → ${sizeLabel(b.size)}`)}else{toast("✓ Готово — файл подготовлен к скачиванию")}}catch(e){toast(e.message)}}
 /* === Tasks panel (bottom-right popup) === */
 const tasks=new Map();let tasksMinimized=false;
-function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&","<":"<",">":">",'"':""","'":"&#39;"}[c]))}
+function esc(s){
+  return String(s)
+    .split("&").join("\u0026amp;")
+    .split("<").join("\u003Clt;")
+    .split(">").join("\u003Egt;")
+    .split('"').join("\u0022quot;")
+    .split("'").join("\u0027#39;");
+}
 function addTask(id,label){tasks.set(id,{label,status:"processing",progress:null,started:Date.now()});renderTasks();if(tasksMinimized)toggleTasks()}
 function setTask(id,st,progress){const t=tasks.get(id);if(!t)return;t.status=st;if(progress!=null)t.progress=progress;renderTasks()}
 function removeTask(id){tasks.delete(id);renderTasks()}
