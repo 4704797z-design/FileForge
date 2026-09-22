@@ -108,6 +108,15 @@ def sitemap():return '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.or
 def privacy():return Path("app/static/privacy.html").read_text(encoding="utf8")
 @APP.get("/terms",response_class=HTMLResponse)
 def terms():return Path("app/static/terms.html").read_text(encoding="utf8")
+@APP.get("/robots.txt",include_in_schema=False)
+def robots():
+ return Response("User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://fileforge.ru/sitemap.xml\n",media_type="text/plain")
+@APP.get("/sitemap.xml",include_in_schema=False)
+def sitemap():
+ return Response("""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+ <url><loc>https://fileforge.ru/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+</urlset>""",media_type="application/xml")
 @APP.get("/health")
 def health():return {"status":"ok","version":"6.0"}
 @APP.get("/api/me")
