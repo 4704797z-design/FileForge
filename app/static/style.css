@@ -51,16 +51,62 @@ footer .brand{font-size:18px}
 .tool-card textarea:hover{border-color:rgba(155,123,255,.38)}
 .tool-card textarea:focus{border-color:rgba(155,123,255,.55);box-shadow:0 0 0 4px rgba(155,123,255,.08);color:#f5f6fb}
 
-/* Custom range slider */
+.video-note{display:block;margin-top:10px;color:#6f7789;font-size:10px;line-height:1.5}.animation-card .video-note{position:relative;z-index:2}
+
+/* === Custom range slider (placed last so .tool-card input rules never override) === */
+.tool-card .quality-control input[type=range]{-webkit-appearance:none!important;appearance:none!important;width:100%;height:6px;border:0!important;border-radius:99px;padding:0!important;margin:0;background:linear-gradient(90deg,var(--purple) 0%,var(--purple) var(--fill,75%),rgba(255,255,255,.14) var(--fill,75%));outline:none;cursor:pointer;min-width:0;box-shadow:none}
+.tool-card .quality-control input[type=range]::-webkit-slider-thumb{-webkit-appearance:none!important;appearance:none!important;width:17px;height:17px;border-radius:50%;background:#fff;border:3px solid var(--purple);box-shadow:0 0 14px rgba(155,123,255,.55);cursor:grab;transition:transform .15s ease,box-shadow .15s ease}
+.tool-card .quality-control input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.15);box-shadow:0 0 20px rgba(155,123,255,.75)}
+.tool-card .quality-control input[type=range]::-webkit-slider-thumb:active{cursor:grabbing;transform:scale(1.05)}
+.tool-card .quality-control input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:#fff;border:3px solid var(--purple);box-shadow:0 0 14px rgba(155,123,255,.55);cursor:grab}
+.tool-card .quality-control input[type=range]::-moz-range-track{height:6px;border-radius:99px;background:rgba(255,255,255,.14)}
+.tool-card .quality-control input[type=range]::-moz-range-progress{height:6px;border-radius:99px;background:var(--purple)}
 .quality-control{display:flex;align-items:center;gap:11px;flex:1;min-width:0}
-.quality-control input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:6px;border:0;border-radius:99px;padding:0;background:linear-gradient(90deg,var(--purple) 0%,var(--purple) var(--fill,75%),rgba(255,255,255,.12) var(--fill,75%));outline:none;cursor:pointer;min-width:0}
-.quality-control input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:17px;height:17px;border-radius:50%;background:#fff;border:3px solid var(--purple);box-shadow:0 0 14px rgba(155,123,255,.55);cursor:grab;transition:transform .15s ease,box-shadow .15s ease}
-.quality-control input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.15);box-shadow:0 0 20px rgba(155,123,255,.75)}
-.quality-control input[type=range]::-webkit-slider-thumb:active{cursor:grabbing;transform:scale(1.05)}
-.quality-control input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:#fff;border:3px solid var(--purple);box-shadow:0 0 14px rgba(155,123,255,.55);cursor:grab}
-.quality-control input[type=range]::-moz-range-track{height:6px;border-radius:99px;background:rgba(255,255,255,.12)}
-.quality-control input[type=range]::-moz-range-progress{height:6px;border-radius:99px;background:var(--purple)}
 .quality-control span{color:#e8eaf2;font-weight:700;white-space:nowrap;min-width:44px;text-align:right}
+.quality-scale{display:flex;justify-content:space-between;color:#6f7789;margin-top:6px}
+
+/* === Audio checkbox — purple accent toggle, fits the dark card design === */
+.tool-card label{display:inline-flex;align-items:center;gap:8px;color:#aeb6c5;font-size:11px;cursor:pointer;user-select:none;white-space:nowrap;padding:0 4px}
+.tool-card label input[type=checkbox]{-webkit-appearance:none;appearance:none;width:17px;height:17px;margin:0;border:1px solid var(--line);border-radius:5px;background:#090b11;cursor:pointer;position:relative;transition:border-color .2s ease,background .2s ease;flex:0 0 auto}
+.tool-card label input[type=checkbox]:hover{border-color:rgba(155,123,255,.5)}
+.tool-card label input[type=checkbox]:checked{background:var(--purple);border-color:var(--purple);box-shadow:0 0 12px rgba(155,123,255,.4)}
+.tool-card label input[type=checkbox]:checked::after{content:"✓";position:absolute;inset:0;display:grid;place-items:center;color:#0a0b10;font-size:11px;font-weight:900}
+.tool-card label input[type=checkbox]:focus-visible{outline:2px solid rgba(155,123,255,.7);outline-offset:2px}
+.tool-card label:hover{color:#f5f6fb}
+
+/* === Tasks panel — bottom-right floating popup === */
+#tasksPanel{position:fixed;right:22px;bottom:22px;width:330px;max-width:calc(100vw - 32px);border:1px solid rgba(155,123,255,.25);border-radius:16px;background:rgba(14,16,24,.92);backdrop-filter:blur(20px);box-shadow:0 22px 60px rgba(0,0,0,.5);z-index:60;overflow:hidden;animation:tasksIn .45s ease}
+@keyframes tasksIn{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+.tasks-head{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line);font-size:12px}
+.tasks-head b{color:#f0f1f6;font-size:12px;letter-spacing:.3px}
+.tasks-head span{color:#7f8799;font-size:10px}
+#tasksToggle{margin-left:auto;width:26px;height:26px;padding:0!important;border-radius:7px!important;background:rgba(255,255,255,.05)!important;color:#aeb6c5!important;font-weight:700;flex:0 0 auto}
+#tasksToggle:hover{background:rgba(155,123,255,.16)!important;color:#fff!important}
+#tasksList{max-height:340px;overflow-y:auto;padding:8px}
+#tasksList::-webkit-scrollbar{width:6px}#tasksList::-webkit-scrollbar-thumb{background:rgba(155,123,255,.3);border-radius:3px}
+.tasks-empty{color:#6f7789;font-size:11px;text-align:center;padding:14px 4px}
+.task{padding:9px 10px;border:1px solid var(--line);border-radius:11px;background:rgba(255,255,255,.03);margin-bottom:7px;animation:tasksIn .3s ease}
+.task-top{display:flex;align-items:center;gap:9px}
+.task-label{flex:1;color:#dfe3ec;font-size:11px;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.task-x{width:22px;height:22px;padding:0!important;border-radius:6px!important;background:transparent!important;color:#6f7789!important;font-size:10px;flex:0 0 auto}
+.task-x:hover{background:rgba(255,113,139,.14)!important;color:#ff718b!important}
+.task-spin{width:13px;height:13px;flex:0 0 auto;border:2px solid rgba(155,123,255,.25);border-top-color:var(--purple);border-radius:50%;animation:spin 1s linear infinite}
+.task-ok{color:var(--green);font-weight:900;flex:0 0 auto}
+.task-fail{color:var(--red);font-weight:900;flex:0 0 auto}
+.task-bar{margin-top:7px;height:4px;border-radius:99px;background:rgba(255,255,255,.09);overflow:hidden}
+.task-bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--purple),var(--pink));transition:width .6s ease}
+#tasksPanel:has(#tasksList:not(:empty)) .tasks-head{border-color:rgba(155,123,255,.2)}
+/* History inside tasks panel */
+.history-title{color:#7f8799;font-size:9px;letter-spacing:1.5px;font-weight:800;text-transform:uppercase;padding:10px 4px 6px}
+.history-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;margin-bottom:4px;background:rgba(255,255,255,.02);transition:background .2s}
+.history-item:hover{background:rgba(155,123,255,.08)}
+.hi-status{flex:0 0 auto;font-weight:900;font-size:11px}
+.st-completed .hi-status{color:var(--green)}.st-failed .hi-status{color:var(--red)}.st-processing .hi-status,.st-queued .hi-status,.st-submitting .hi-status{color:var(--purple)}
+.hi-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.hi-prompt{color:#c9cdd8;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hi-date{color:#6f7789;font-size:9px}
+.hi-dl{flex:0 0 auto;width:26px;height:26px;display:grid;place-items:center;border:1px solid rgba(100,214,161,.3);border-radius:7px;color:var(--green)!important;font-weight:800;transition:.2s}
+.hi-dl:hover{background:rgba(100,214,161,.14);transform:translateY(-1px)}
 
 @media(max-width:600px){
   .nav{height:72px}

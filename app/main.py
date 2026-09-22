@@ -332,6 +332,14 @@ def animation_download(token:str):
  if r.status_code>=400:raise HTTPException(502,"Video provider returned an error")
  return StreamingResponse(io.BytesIO(r.content),media_type="video/mp4",headers={"Content-Disposition":'attachment; filename="fileforge-animation.mp4"'})
 
+@APP.get("/api/photo/history")
+def photo_history(req:Request):
+ u=user(req)
+ if not u:raise HTTPException(401,"Войдите в аккаунт")
+ with db() as c:
+  rows=c.execute("SELECT public_token,status,prompt,created_at,completed_at,error FROM generations WHERE user_id=? ORDER BY id DESC LIMIT 20",(u["id"],)).fetchall()
+ return {"items":[{"token":r["public_token"],"status":r["status"],"prompt":(r["prompt"] or "")[:120],"created_at":r["created_at"],"completed_at":r["completed_at"],"error":(r["error"] or "")[:200]} for r in rows]}
+
 @APP.post("/api/premium/create")
 def premium_create(req:Request):
  u=user(req)
