@@ -290,6 +290,8 @@ POST /api/auth/logout
 POST /api/image/upscale
 POST /api/image/convert
 POST /api/image/compress
+POST /api/image/generate
+POST /api/image/ai-edit
 POST /api/pdf/to-images
 POST /api/images/to-pdf
 POST /api/pdf/merge
@@ -298,6 +300,7 @@ POST /api/pdf/to-djvu
 POST /api/photo/animate
 GET  /api/photo/animate/{token}
 GET  /api/photo/animate/{token}/download
+GET  /api/photo/history
 POST /api/premium/create
 POST /api/payment/webhook
 ```
@@ -341,15 +344,29 @@ The test suite covers health/home, registration/login sessions, image operations
 
 ## Deployment
 
-On a VPS:
+On a Linux VPS (Debian/Ubuntu, amd64 or arm64):
 
 ```bash
-mkdir -p /opt/fileforge
+# 1. Install Docker (if not installed)
+curl -fsSL https://get.docker.com | sh
+
+# 2. Clone the repo and configure
+git clone https://github.com/4704797z-design/FileForge.git /opt/fileforge
 cd /opt/fileforge
 cp .env.example .env
-# edit .env and insert the real server-side credentials
+
+# 3. Generate a strong session secret
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+# paste the value into SECRET_KEY in .env
+
+# 4. Set MIXEN_API_KEY in .env (AI features)
+# 5. Start
 docker compose up -d --build
+docker compose ps
+docker compose logs --tail=50 fileforge
 ```
+
+The service listens on port 8000. Check `http://<server-ip>:8000/health` — it must return `{"status":"ok",...}`.
 
 Adapt `deploy/nginx.conf` for the real domain and TLS. `deploy/systemd-fileforge.service` is an example Docker Compose service wrapper.
 
