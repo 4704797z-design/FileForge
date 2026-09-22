@@ -86,6 +86,17 @@ def send_verification_email(email,token):
 def premium_active(u):
  return bool(u and u["premium"] and (not u["premium_until"] or u["premium_until"]>time.time()))
 
+def provider_error(e):
+ """Map provider exceptions to user-friendly messages; internals stay in logs."""
+ msg=str(e)
+ if "402" in msg or "balance" in msg.lower() or "insufficient" in msg.lower():
+  return "Сервис обработки временно недоступен — попробуйте повторить через несколько минут"
+ if "401" in msg or "api key" in msg.lower() or "unauthorized" in msg.lower():
+  return "Сервис обработки временно недоступен — попробуйте повторить позже"
+ if "unavailable" in msg.lower() or "503" in msg or "overloaded" in msg.lower():
+  return "AI-модель временно перегружена — попробуйте ещё раз через пару минут"
+ return "Не удалось выполнить операцию. Попробуйте позже или обратитесь в поддержку"
+
 def video_cost_seconds(duration,resolution):
  seconds=int(duration)
  multiplier=2 if resolution=="1080p" else 1
@@ -211,7 +222,7 @@ def image_generate(req:Request,prompt:str=Form(...),size:str=Form("1024x1024")):
  except RuntimeError as e:
   logger.error("[ERROR] AI image generation failed: %s",e)
   with db() as c:c.execute("UPDATE users SET image_count=MAX(image_count-1,0) WHERE id=?",(u["id"],))
-  raise HTTPException(502,str(e)[:500])
+  raise HTTPException(502,provider_error(e))
  return out(png,"generated.png","image/png")
 @APP.post("/api/image/ai-edit")
 async def image_ai_edit(req:Request,file:UploadFile=File(...),prompt:str=Form(...)):
@@ -230,7 +241,7 @@ async def image_ai_edit(req:Request,file:UploadFile=File(...),prompt:str=Form(..
  except RuntimeError as e:
   logger.error("[ERROR] AI image edit failed: %s",e)
   with db() as c:c.execute("UPDATE users SET image_count=MAX(image_count-1,0) WHERE id=?",(u["id"],))
-  raise HTTPException(502,str(e)[:500])
+  raise HTTPException(502,provider_error(e))
  return out(png,"edited.png","image/png")
 @APP.post("/api/image/convert")
 async def convert(req:Request,file:UploadFile=File(...),fmt:str=Form("webp")):
@@ -321,7 +332,7 @@ async def animate(req:Request,file:UploadFile=File(...),prompt:str=Form("Slow ci
    c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(str(e)[:1000],gid))
    if p:c.execute("UPDATE users SET video_seconds_balance=video_seconds_balance+? WHERE id=?",(reserved,u["id"]))
    elif trial_reserved:c.execute("UPDATE users SET video_trial_used=0 WHERE id=?",(u["id"],))
-  raise HTTPException(502,str(e)[:500] or "Mixen video request could not be submitted")
+  raise HTTPException(502,provider_error(e) or "Mixen video request could not be submitted")
  with db() as c:c.execute("UPDATE generations SET status='queued',provider_request_id=? WHERE id=?",(request_id,gid))
  return {"generation_id":gid,"token":token,"status":"queued","provider_request_id":request_id,"video_seconds_charged":reserved if p else seconds}
 
@@ -361,7 +372,7 @@ def video_create(req:Request,prompt:str=Form(...),duration:str=Form("5"),resolut
    c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(str(e)[:1000],gid))
    if p:c.execute("UPDATE users SET video_seconds_balance=video_seconds_balance+? WHERE id=?",(reserved,u["id"]))
    elif trial_reserved:c.execute("UPDATE users SET video_trial_used=0 WHERE id=?",(u["id"],))
-  raise HTTPException(502,str(e)[:500] or "Mixen video request could not be submitted")
+  raise HTTPException(502,provider_error(e) or "Mixen video request could not be submitted")
  with db() as c:c.execute("UPDATE generations SET status='queued',provider_request_id=? WHERE id=?",(request_id,gid))
  return {"generation_id":gid,"token":token,"status":"queued","provider_request_id":request_id,"video_seconds_charged":reserved if p else seconds}
 
@@ -382,8 +393,9 @@ def animation_status(token:str):
    with db() as c:c.execute("UPDATE generations SET status='completed',completed_at=?,video_url=? WHERE id=?",(int(time.time()),video["url"],g["id"]))
    return {"generation_id":g["id"],"status":"completed","video":video,"seed":s.get("seed")}
   if s["status"]=="failed":
-   with db() as c:c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(s.get("error","Mixen generation failed"),g["id"]))
-   return {"generation_id":g["id"],"status":"failed","error":s.get("error","Mixen generation failed")}
+   err=s.get("error","Mixen generation failed")
+   with db() as c:c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(err,g["id"]))
+   return {"generation_id":g["id"],"status":"failed","error":provider_error(RuntimeError(err))}
  if g["status"]=="completed":
   return {"generation_id":g["id"],"status":"completed","video":{"url":g["video_url"]}}
  return {"generation_id":g["id"],"status":g["status"],"error":g["error"]}

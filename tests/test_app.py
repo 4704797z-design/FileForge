@@ -122,7 +122,8 @@ def test_animation_submit_failure_refunds_trial(client, monkeypatch):
     client.post("/api/auth/register", data={"email":"anim-fail@example.com","password":"password123","password_confirm":"password123","accept_terms":"true"})
     r = client.post("/api/photo/animate", files={"file":("test.png", png_bytes(), "image/png")}, data={"prompt":"slow camera movement","duration":"5","resolution":"720p","aspect_ratio":"auto","generate_audio":"false"})
     assert r.status_code == 502
-    assert "Mixen API 422" in r.json()["detail"]
+    assert r.json()["detail"]  # provider error mapped to a friendly message
+    assert "Mixen API 422" not in r.json()["detail"]
     me = client.get("/api/me").json()
     assert me["video_trial_remaining"] == 5
 
