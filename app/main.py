@@ -6,7 +6,7 @@ from pathlib import Path
 import bcrypt
 import requests
 from fastapi import FastAPI,UploadFile,File,Form,Request,HTTPException
-from fastapi.responses import StreamingResponse,HTMLResponse,JSONResponse
+from fastapi.responses import StreamingResponse,HTMLResponse,JSONResponse,RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from itsdangerous import URLSafeTimedSerializer
 from PIL import Image,ImageEnhance
@@ -124,6 +124,9 @@ def requisites():return Path("app/static/requisites.html").read_text(encoding="u
 @APP.get("/api/site/requisites",include_in_schema=False)
 def site_requisites():
  return {"name":os.getenv("SELLER_NAME",""),"inn":os.getenv("SELLER_INN",""),"email":os.getenv("SELLER_EMAIL","")}
+@APP.get("/favicon.ico",include_in_schema=False)
+def favicon():
+ return RedirectResponse("/static/favicon.ico",status_code=302)
 @APP.get("/robots.txt",include_in_schema=False)
 def robots():
  return Response("User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://file-forge.ru/sitemap.xml\n",media_type="text/plain")
