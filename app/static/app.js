@@ -106,6 +106,17 @@ async function animatePhoto(){
   throw Error("Генерация выполняется слишком долго. Попробуйте проверить позже.");
  }catch(e){setTask(id,"failed");setTimeout(()=>removeTask(id),10000);limitToast(e.message)}
 }
+async function buy(){
+ const me=await fetch("/api/me").then(r=>r.json()).catch(()=>null);
+ if(!me||!me.authenticated)return toast("Сначала войдите или зарегистрируйтесь — покупка привязывается к аккаунту");
+ try{
+  const r=await fetch("/api/premium/create",{method:"POST"});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw Error(j.detail||"Не удалось создать платёж");
+  toast("Перенаправляем на страницу оплаты ЮKassa…");
+  window.location.href=j.checkout_url;
+ }catch(e){toast(e.message)}
+}
 let authMode="login";
 function setAuthMode(mode){
  authMode=mode;
