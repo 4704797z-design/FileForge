@@ -422,6 +422,19 @@ def photo_history(req:Request):
  u=user(req)
  if not u:raise HTTPException(401,"Войдите в аккаунт")
  with db() as c:
+  # Refresh stuck jobs: ask Mixen once for any job still pending >90s
+  stuck=c.execute("""SELECT id,public_token,provider_request_id,resolution,created_at FROM generations
+                     WHERE user_id=? AND status IN ('queued','processing','submitting') AND created_at<?""",
+                  (u["id"],int(time.time())-90)).fetchall()
+  for g in stuck:
+   try:s=mixen.status(g["provider_request_id"],g["resolution"])
+   except Exception:s={"status":g["status"]}
+   if s["status"]=="completed":
+    c.execute("UPDATE generations SET status='completed',completed_at=?,video_url=? WHERE id=?",(int(time.time()),s["video"]["url"],g["id"]))
+   elif s["status"]=="failed":
+    c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(s.get("error") or "provider failed",g["id"]))
+   elif int(time.time())-g["created_at"]>3600:
+    c.execute("UPDATE generations SET status='failed',error=? WHERE id=?",(provider_error(RuntimeError("timeout")),g["id"]))
   rows=c.execute("SELECT public_token,status,prompt,created_at,completed_at,error FROM generations WHERE user_id=? ORDER BY id DESC LIMIT 20",(u["id"],)).fetchall()
  return {"items":[{"token":r["public_token"],"status":r["status"],"prompt":(r["prompt"] or "")[:120],"created_at":r["created_at"],"completed_at":r["completed_at"],"error":(r["error"] or "")[:200]} for r in rows]}
 

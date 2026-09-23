@@ -41,7 +41,33 @@ async function loadHistory(){
   if(!w)return;
   w.style.display=j.items.length?"block":"none";
   l.innerHTML=j.items.map(it=>`<div class="history-item st-${esc(it.status)}"><span class="hi-status">${it.status==="completed"?"✓":it.status==="failed"?"✕":"◌"}</span><div class="hi-body"><span class="hi-prompt">${esc(it.prompt||"Без описания")}</span><span class="hi-date">${new Date(it.created_at*1000).toLocaleString("ru-RU",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"})}</span></div>${it.status==="completed"?`<a class="hi-dl" href="/api/photo/animate/${encodeURIComponent(it.token)}/download">↓</a>`:""}</div>`).join("");
+  // Resurrect in-flight jobs into the tasks panel (e.g. phone browser killed the tab)
+  const active=j.items.filter(it=>it.status==="processing"||it.status==="queued");
+  if(active.length)watchPending(active);
  }catch{}
+}
+function watchPending(items){
+ for(const it of items){
+  const id="resume-"+it.token;
+  if(tasks.has(id))continue;
+  addTask(id,(it.status==="processing"?"Генерация: ":"Очередь: ")+(it.prompt||"видео").slice(0,40));
+  pollResumed(id,it.token);
+ }
+}
+async function pollResumed(id,token){
+ for(let i=0;i<200;i++){
+  await new Promise(x=>setTimeout(x,5000));
+  let s;
+  try{s=await (await fetch("/api/photo/animate/"+encodeURIComponent(token))).json()}catch{continue}
+  if(typeof s.progress==="number")setTask(id,s.status,s.progress);else setTask(id,s.status);
+  if(s.status==="completed"){
+   const dr=await fetch("/api/photo/animate/"+encodeURIComponent(token)+"/download");
+   if(dr.ok){await downloadBlob(await dr.blob(),"fileforge-video.mp4");toast("✓ Видео из истории готово — скачивание началось")}
+   setTask(id,"completed");setTimeout(()=>removeTask(id),6000);loadHistory();return;
+  }
+  if(s.status==="failed"){setTask(id,"failed");setTimeout(()=>removeTask(id),10000);loadHistory();return}
+ }
+ setTask(id,"failed");
 }
 setInterval(loadHistory,10000);loadHistory();showUsageWarning();
 async function generateImage(){
