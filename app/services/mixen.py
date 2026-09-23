@@ -55,17 +55,56 @@ def size_for(resolution: str, aspect_ratio: str) -> str:
 
 
 def _api_error(response: requests.Response) -> str:
-    """Extract a human-readable error message from a Mixen response."""
+    """Extract a useful, bounded error message from a Mixen response."""
     try:
-        j = response.json()
+        payload = response.json()
     except ValueError:
-        return response.text[:500]
-    err = j.get("error")
+        return response.text[:1000]
+    err = payload.get("error") if isinstance(payload, dict) else None
     if isinstance(err, dict):
-        return err.get("message") or err.get("code") or str(err)[:500]
+        message = err.get("message") or err.get("detail") or err.get("code")
+        if message:
+            return str(message)[:1000]
     if isinstance(err, str):
-        return err[:500]
-    return j.get("message") or response.text[:500]
+        return err[:1000]
+    if isinstance(payload, dict):
+        message = payload.get("message") or payload.get("detail")
+        if message:
+            return str(message)[:1000]
+    return str(payload)[:1000]
+
+
+def _job_id(payload: dict) -> str | None:
+    """Read a job identifier from the response shapes used by video APIs."""
+    if not isinstance(payload, dict):
+        return None
+    for key in ("id", "request_id", "job_id"):
+        if payload.get(key):
+            return str(payload[key])
+    data = payload.get("data")
+    if isinstance(data, dict):
+        for key in ("id", "request_id", "job_id"):
+            if data.get(key):
+                return str(data[key])
+    return None
+
+
+def _video_url(payload: dict, request_id: str) -> str:
+    if isinstance(payload, dict):
+        for key in ("url", "video_url", "output_url"):
+            if payload.get(key):
+                return str(payload[key])
+        output = payload.get("output")
+        if isinstance(output, dict):
+            for key in ("url", "video_url"):
+                if output.get(key):
+                    return str(output[key])
+        data = payload.get("data")
+        if isinstance(data, dict):
+            return _video_url(data, request_id)
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            return _video_url(data[0], request_id)
+    return f"{API_BASE}/videos/{request_id}/content"
 
 
 def _post_with_retry(url: str, **kwargs) -> requests.Response:
@@ -116,10 +155,11 @@ def submit(
     log.info("[AI_RESPONSE] video submit ok")
 
     job = response.json()
-    job_id = job.get("id")
+    job_id = _job_id(job)
     if not job_id:
+        log.error("[AI_RESPONSE] video submit returned no job id: %s", str(job)[:1000])
         raise RuntimeError("Mixen API returned no video job id")
-    return str(job_id)
+    return job_id
 
 
 def submit_text(
@@ -152,10 +192,11 @@ def submit_text(
     log.info("[AI_RESPONSE] text-video submit ok")
 
     job = response.json()
-    job_id = job.get("id")
+    job_id = _job_id(job)
     if not job_id:
+        log.error("[AI_RESPONSE] text-video submit returned no job id: %s", str(job)[:1000])
         raise RuntimeError("Mixen API returned no video job id")
-    return str(job_id)
+    return job_id
 
 
 def status(request_id: str, resolution: str) -> dict:
@@ -174,23 +215,22 @@ def status(request_id: str, resolution: str) -> dict:
         return {"status": "failed", "error": f"Mixen API {response.status_code}: {detail}"}
 
     job = response.json()
-    state = job.get("status", "queued")
+    state = str(job.get("status", job.get("state", "queued"))).lower()
     log.info("[VIDEO_STATUS] job=%s state=%s progress=%s", request_id, state, job.get("progress"))
-    if state in {"queued", "in_progress", "processing", "submitting"}:
-        result = {"status": "processing" if state in {"in_progress", "processing"} else "queued"}
+    if state in {"queued", "pending", "in_progress", "processing", "submitting", "running"}:
+        result = {"status": "processing" if state in {"in_progress", "processing", "running"} else "queued"}
         if job.get("progress") is not None:
             result["progress"] = job.get("progress")
         return result
-    if state == "failed":
+    if state in {"failed", "error", "cancelled", "canceled"}:
         err = job.get("error")
         if isinstance(err, dict):
-            err = err.get("message") or str(err)
+            err = err.get("message") or err.get("detail") or str(err)
         return {"status": "failed", "error": err or job.get("message") or "Mixen generation failed"}
-    if state == "completed":
-        video_url = job.get("url") or job.get("video_url") or f"{API_BASE}/videos/{request_id}/content"
+    if state in {"completed", "succeeded", "success"}:
         return {
             "status": "completed",
-            "video": {"url": video_url},
+            "video": {"url": _video_url(job, request_id)},
             "seed": job.get("seed"),
         }
     return {"status": "queued"}

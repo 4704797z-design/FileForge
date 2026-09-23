@@ -228,6 +228,17 @@ async function resendVerification(){
  }catch(e){toast(e.message)}
 }
 const observer=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add("visible");observer.unobserve(e.target)}}),{threshold:.08});document.querySelectorAll(".reveal").forEach(e=>observer.observe(e));
-["up","conv","cmp","pdf","djvu","pdjvu","anim"].forEach(id=>{let el=$(id);if(!el)return;el.addEventListener("change",()=>{if(el.files?.[0])el.closest(".tool-card")?.classList.add("has-file")})});
+function showSelectedFile(input){
+ const card=input.closest(".tool-card");
+ if(!card||!input.files?.[0])return;
+ card.classList.add("has-file");
+ let preview=card.querySelector(".file-preview");
+ if(!preview){preview=document.createElement("div");preview.className="file-preview";input.insertAdjacentElement("afterend",preview)}
+ const file=input.files[0];preview.textContent=`Выбран: ${file.name} · ${sizeLabel(file.size)}`;
+ if(file.type.startsWith("image/")){
+  const img=document.createElement("img");img.alt="Предпросмотр выбранного изображения";img.src=URL.createObjectURL(file);preview.replaceChildren(img,document.createTextNode(` ${file.name} · ${sizeLabel(file.size)}`));
+ }
+}
+["up","edit","conv","cmp","pdf","djvu","pdjvu","anim"].forEach(id=>{let el=$(id);if(!el)return;el.addEventListener("change",()=>showSelectedFile(el))});
 const q=$("quality"),qv=$("qualityValue");if(q&&qv){const upd=()=>{q.style.setProperty("--fill",q.value+"%");qv.textContent=`${q.value}%`};q.addEventListener("input",upd);upd()}
 load();

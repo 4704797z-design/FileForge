@@ -147,6 +147,29 @@ def test_mixen_submit_sends_seconds_as_string(monkeypatch):
     assert seen["json"]["model"] == "alibaba/wan-3.0"
     assert seen["json"]["input_reference"]["image_url"].startswith("data:image/png;base64,")
 
+def test_mixen_accepts_nested_job_id_and_completed_output(monkeypatch):
+    import app.services.mixen as mixen
+    monkeypatch.setenv("MIXEN_API_KEY", "test-key")
+
+    class Response:
+        status_code = 200
+        def __init__(self, payload):
+            self.payload = payload
+        def json(self):
+            return self.payload
+
+    calls = iter([
+        Response({"data": {"request_id": "job-nested"}}),
+        Response({"state": "succeeded", "output": {"video_url": "https://cdn.example/video.mp4"}}),
+    ])
+    monkeypatch.setattr(mixen.requests, "post", lambda *args, **kwargs: next(calls))
+    monkeypatch.setattr(mixen.requests, "get", lambda *args, **kwargs: next(calls))
+
+    request_id = mixen.submit_text("a cinematic ocean sunset", "5", "720p", "16:9", False)
+    assert request_id == "job-nested"
+    result = mixen.status(request_id, "720p")
+    assert result == {"status": "completed", "video": {"url": "https://cdn.example/video.mp4"}, "seed": None}
+
 def test_yookassa_payment_flow_is_verified_and_idempotent(client, monkeypatch):
     monkeypatch.setenv("PAYMENT_PROVIDER", "yookassa")
     import app.main as main
