@@ -255,13 +255,13 @@ def test_ai_video_payment_flow_marks_project_paid(client, monkeypatch):
                   {"duration":5,"narration":"CTA","visual_prompt":"Визуал 3","video_prompt":"Cinematic sky"}]})
     monkeypatch.setattr(main.yookassa, "configured", lambda: True)
     monkeypatch.setattr(main.yookassa, "create_payment", lambda order_id, amount, **kwargs: {"id":"pay-ai-1","status":"pending","checkout_url":"https://pay.example/ai"})
-    monkeypatch.setattr(main.yookassa, "get_payment", lambda payment_id: {"id":payment_id,"status":"succeeded","amount":{"value":"131.10","currency":"RUB"},"metadata":{"order_id":"1","payment_type":"ai_video","project_id":"1"}})
+    monkeypatch.setattr(main.yookassa, "get_payment", lambda payment_id: {"id":payment_id,"status":"succeeded","amount":{"value":"232.20","currency":"RUB"},"metadata":{"order_id":"1","payment_type":"ai_video","project_id":"1"}})
     monkeypatch.setattr(main.mixen, "submit_text", lambda *args, **kwargs: "external-job")
     client.post("/api/auth/register", data={"email":"paid@example.com","password":"password123","password_confirm":"password123","accept_terms":"true"})
     r = client.post("/api/ai-video/projects", data={"idea":"Сделай короткий ролик про путешествия","format":"9:16","duration":"15"})
     assert r.status_code == 200
     project_id = r.json()["id"]
-    assert r.json()["pricing"] == {"seconds": 15, "mixen_rub_per_second": 6.74, "provider_cost_rub": 101.1, "service_fee_rub": 30, "total_rub": 131.1}
+    assert r.json()["pricing"] == {"seconds": 30, "mixen_rub_per_second": 6.74, "provider_cost_rub": 202.2, "service_fee_rub": 30, "total_rub": 232.2}
     r = client.post(f"/api/ai-video/projects/{project_id}/payment")
     assert r.status_code == 200
     order_id = r.json()["order_id"]

@@ -158,9 +158,13 @@ def project_row(c,project_id,user_id):
  if not p:raise HTTPException(404,"Проект не найден")
  return p
 
+def mixen_scene_bill_seconds(seconds:int) -> int:
+ """Mixen bills a minimum of 10 seconds per video job."""
+ return max(10, seconds)
+
 def project_data(c,p):
  scenes=c.execute("SELECT scene_number,duration,narration,visual_prompt,video_prompt,status,video_url,error FROM video_scenes WHERE project_id=? ORDER BY scene_number",(p["id"],)).fetchall()
- seconds=sum(s["duration"] for s in scenes);provider_cost=round(seconds*AI_VIDEO_MIXEN_RUB_PER_SECOND,2);total=round(provider_cost+AI_VIDEO_SERVICE_FEE_RUB,2)
+ seconds=sum(mixen_scene_bill_seconds(s["duration"]) for s in scenes);provider_cost=round(seconds*AI_VIDEO_MIXEN_RUB_PER_SECOND,2);total=round(provider_cost+AI_VIDEO_SERVICE_FEE_RUB,2)
  return {"id":p["id"],"title":p["title"],"idea":p["idea"],"format":p["format"],"duration":p["duration"],"status":p["status"],"script":p["script"],"voice":p["voice"],"subtitles":p["subtitles"],"final_video":bool(p["final_video"]),"error":p["error"],"pricing":{"seconds":seconds,"mixen_rub_per_second":AI_VIDEO_MIXEN_RUB_PER_SECOND,"provider_cost_rub":provider_cost,"service_fee_rub":AI_VIDEO_SERVICE_FEE_RUB,"total_rub":total},"scenes":[dict(s) for s in scenes]}
 
 def director_plan(idea,fmt,duration,revision=""):
@@ -250,6 +254,9 @@ def get_video_project(req:Request,project_id:int):
   scenes=c.execute("SELECT status FROM video_scenes WHERE project_id=?",(project_id,)).fetchall()
   if scenes and all(s["status"]=='completed' for s in scenes) and p["status"]=='generating':
    c.execute("UPDATE video_projects SET status='editing',updated_at=? WHERE id=?",(int(time.time()),project_id));threading.Thread(target=assemble_project,args=(project_id,),daemon=True).start()
+  elif p["status"]=='editing' and scenes and all(s["status"]=='completed' for s in scenes) and int(time.time())-p["updated_at"]>300:
+   # Montage thread was lost (e.g. container restart): retry assembly on every poll after 5 minutes.
+   c.execute("UPDATE video_projects SET updated_at=? WHERE id=?",(int(time.time()),project_id));threading.Thread(target=assemble_project,args=(project_id,),daemon=True).start()
   elif any(s["status"]=='failed' for s in scenes):c.execute("UPDATE video_projects SET status='failed',updated_at=? WHERE id=?",(int(time.time()),project_id))
   return project_data(c,project_row(c,project_id,u["id"]))
 
@@ -281,7 +288,7 @@ def create_video_payment(req:Request,project_id:int):
   p=project_row(c,project_id,u["id"])
   if p["status"]!='planned':raise HTTPException(409,"Оплата для этого проекта уже создана или завершена")
   scenes=c.execute("SELECT duration FROM video_scenes WHERE project_id=?",(project_id,)).fetchall()
-  seconds=sum(s["duration"] for s in scenes);amount=round(seconds*AI_VIDEO_MIXEN_RUB_PER_SECOND+AI_VIDEO_SERVICE_FEE_RUB,2)
+  seconds=sum(mixen_scene_bill_seconds(s["duration"]) for s in scenes);amount=round(seconds*AI_VIDEO_MIXEN_RUB_PER_SECOND+AI_VIDEO_SERVICE_FEE_RUB,2)
   existing=c.execute("SELECT * FROM orders WHERE project_id=? AND payment_type='ai_video' AND status='pending' ORDER BY id DESC LIMIT 1",(project_id,)).fetchone()
   if existing and existing["provider_id"]:return {"order_id":existing["id"],"amount":amount,"status":"pending","checkout_url":None,"message":"Платёж уже создан"}
   if existing:oid=existing["id"]
