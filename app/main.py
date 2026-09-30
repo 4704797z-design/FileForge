@@ -239,6 +239,15 @@ async def create_video_project(req:Request,idea:str=Form(...),format:str=Form("9
   c.execute("INSERT INTO video_project_messages(project_id,role,content,created_at) VALUES(?,?,?,?)",(pid,"user",idea,now));c.execute("INSERT INTO video_project_messages(project_id,role,content,created_at) VALUES(?,?,?,?)",(pid,"assistant","План ролика готов. Проверьте сцены и подтвердите создание видео.",now))
   return {**project_data(c,project_row(c,pid,u["id"])),"assistant_message":"Я подготовил сценарий и сцены. Можете попросить изменить стиль, темп или конкретную сцену — либо нажмите «Создать видео»."}
 
+@APP.get("/api/ai-video/projects")
+def list_video_projects(req:Request):
+ u=user(req)
+ if not u:raise HTTPException(401,"Войдите в аккаунт")
+ with db() as c:
+  rows=c.execute("SELECT id,title,status,format,duration,created_at,updated_at FROM video_projects WHERE user_id=? ORDER BY updated_at DESC LIMIT 50",(u["id"],)).fetchall()
+  counts={r["project_id"]:r["n"] for r in c.execute("SELECT project_id,count(*) n FROM video_scenes WHERE project_id IN (SELECT id FROM video_projects WHERE user_id=?) GROUP BY project_id",(u["id"],)).fetchall()}
+ return {"items":[{"id":r["id"],"title":r["title"],"status":r["status"],"format":r["format"],"duration":r["duration"],"scenes":counts.get(r["id"],0),"created_at":r["created_at"],"updated_at":r["updated_at"]} for r in rows]}
+
 @APP.get("/api/ai-video/projects/{project_id}")
 def get_video_project(req:Request,project_id:int):
  u=user(req)
