@@ -1,16 +1,18 @@
 const $=x=>document.getElementById(x);
+function valueOf(id){const el=$(id);return el&&el.value?el.value:""}
+function selectedFile(id){const el=$(id);return el&&el.files?el.files[0]:null}
 function toast(x){let t=$("toast");t.textContent=x;t.style.display="block";clearTimeout(window.__toast);window.__toast=setTimeout(()=>t.style.display="none",4200)}
 function sizeLabel(n){if(n<1024)return `${n} Б`;if(n<1024*1024)return `${(n/1024).toFixed(1)} КБ`;return `${(n/1024/1024).toFixed(2)} МБ`}
-async function run(url,id,p){let f=$(id)?.files?.[0];if(!f)return toast("Сначала выберите файл");let d=new FormData();d.append("file",f);for(let[k,v]of Object.entries(p||{}))d.append(k,v);toast("Обрабатываем файл…");try{let r=await fetch(url,{method:"POST",body:d});if(!r.ok){let j=await r.json().catch(()=>({}));throw Error(j.detail||"Ошибка обработки")};let b=await r.blob(),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=(r.headers.get("content-disposition")||"").match(/filename="([^"]+)"/)?.[1]||"result";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);if(url==="/api/image/compress"){let diff=Math.round((1-b.size/f.size)*100);toast(diff>0?`✓ Сжато: ${sizeLabel(f.size)} → ${sizeLabel(b.size)} (−${diff}%)`:`✓ Готово: ${sizeLabel(f.size)} → ${sizeLabel(b.size)}`)}else{toast("✓ Готово — файл подготовлен к скачиванию")}}catch(e){toast(e.message)}}
+async function run(url,id,p){let f=selectedFile(id);if(!f)return toast("Сначала выберите файл");let d=new FormData();d.append("file",f);for(let[k,v]of Object.entries(p||{}))d.append(k,v);toast("Обрабатываем файл…");try{let r=await fetch(url,{method:"POST",body:d});if(!r.ok){let j=await r.json().catch(()=>({}));throw Error(j.detail||"Ошибка обработки")};let b=await r.blob(),a=document.createElement("a"),match=(r.headers.get("content-disposition")||"").match(/filename="([^"]+)"/);a.href=URL.createObjectURL(b);a.download=match?match[1]:"result";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);if(url==="/api/image/compress"){let diff=Math.round((1-b.size/f.size)*100);toast(diff>0?`✓ Сжато: ${sizeLabel(f.size)} → ${sizeLabel(b.size)} (−${diff}%)`:`✓ Готово: ${sizeLabel(f.size)} → ${sizeLabel(b.size)}`)}else{toast("✓ Готово — файл подготовлен к скачиванию")}}catch(e){toast(e.message)}}
 /* === Tasks panel (bottom-right popup) === */
 const tasks=new Map();let tasksMinimized=false;
 function esc(s){
   return String(s)
-    .split("&").join("\u0026amp;")
-    .split("<").join("\u003Clt;")
-    .split(">").join("\u003Egt;")
-    .split('"').join("\u0022quot;")
-    .split("'").join("\u0027#39;");
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#39;");
 }
 function addTask(id,label){tasks.set(id,{label,status:"processing",progress:null,started:Date.now()});renderTasks();if(tasksMinimized)toggleTasks()}
 function setTask(id,st,progress){const t=tasks.get(id);if(!t)return;t.status=st;if(progress!=null)t.progress=progress;renderTasks()}
@@ -44,7 +46,7 @@ async function loadHistory(){
   // Resurrect in-flight jobs into the tasks panel (e.g. phone browser killed the tab)
   const active=j.items.filter(it=>it.status==="processing"||it.status==="queued");
   if(active.length)watchPending(active);
- }catch{}
+ }catch(e){}
 }
 function watchPending(items){
  for(const it of items){
@@ -58,7 +60,7 @@ async function pollResumed(id,token){
  for(let i=0;i<200;i++){
   await new Promise(x=>setTimeout(x,5000));
   let s;
-  try{s=await (await fetch("/api/photo/animate/"+encodeURIComponent(token))).json()}catch{continue}
+  try{s=await (await fetch("/api/photo/animate/"+encodeURIComponent(token))).json()}catch(e){continue}
   if(typeof s.progress==="number")setTask(id,s.status,s.progress);else setTask(id,s.status);
   if(s.status==="completed"){
    const dr=await fetch("/api/photo/animate/"+encodeURIComponent(token)+"/download");
@@ -71,7 +73,7 @@ async function pollResumed(id,token){
 }
 setInterval(loadHistory,10000);loadHistory();showUsageWarning();
 async function generateImage(){
- const p=$("genPrompt")?.value?.trim(); if(!p)return toast("Опишите, что нужно сгенерировать");
+ const p=valueOf("genPrompt").trim(); if(!p)return toast("Опишите, что нужно сгенерировать");
  const id="gen-"+Date.now(); addTask(id,"AI-генерация: "+p.slice(0,40));
  try{
   let d=new FormData(); d.append("prompt",p); d.append("size","1000x1000");
@@ -92,8 +94,8 @@ function limitToast(msg){
  clearTimeout(t._hide);t._hide=setTimeout(()=>t.classList.remove("show"),9000);
 }
 async function editImage(){
- const f=$("edit")?.files?.[0]; if(!f)return toast("Сначала выберите изображение");
- const p=$("editPrompt")?.value?.trim(); if(!p)return toast("Опишите, что нужно изменить");
+ const f=selectedFile("edit"); if(!f)return toast("Сначала выберите изображение");
+ const p=valueOf("editPrompt").trim(); if(!p)return toast("Опишите, что нужно изменить");
  const id="edit-"+Date.now(); addTask(id,"AI-редактирование: "+p.slice(0,40));
  try{
   let d=new FormData(); d.append("file",f); d.append("prompt",p);
@@ -105,7 +107,7 @@ async function editImage(){
  }catch(e){setTask(id,"failed");setTimeout(()=>removeTask(id),8000);limitToast(e.message)}
 }
 async function createVideo(){
- const p=$("t2vPrompt")?.value?.trim(); if(!p)return toast("Опишите сцену, которую нужно сгенерировать");
+ const p=valueOf("t2vPrompt").trim(); if(!p)return toast("Опишите сцену, которую нужно сгенерировать");
  const id="t2v-"+Date.now(); addTask(id,"Видео из текста: "+p.slice(0,40));
  const d=new FormData(); d.append("prompt",p);
  d.append("duration",$("t2vDuration").value); d.append("resolution",$("t2vResolution").value);
@@ -133,8 +135,8 @@ async function createVideo(){
  }catch(e){setTask(id,"failed");setTimeout(()=>removeTask(id),10000);limitToast(e.message)}
 }
 async function animatePhoto(){
- const f=$("anim")?.files?.[0]; if(!f)return toast("Сначала выберите фото");
- const prompt=$("animPrompt")?.value?.trim(); if(!prompt)return toast("Опишите, какое движение должно быть на видео");
+ const f=selectedFile("anim"); if(!f)return toast("Сначала выберите фото");
+ const prompt=valueOf("animPrompt").trim(); if(!prompt)return toast("Опишите, какое движение должно быть на видео");
  const id="anim-"+Date.now(); addTask(id,"Оживление фото: "+prompt.slice(0,40));
  const d=new FormData(); d.append("file",f); d.append("prompt",prompt);
  d.append("duration",$("animDuration").value); d.append("resolution",$("animResolution").value);
@@ -176,13 +178,13 @@ async function showUsageWarning(){
   const j=await fetch("/api/me").then(r=>r.json()).catch(()=>null);
   if(!j||!j.authenticated)return;
   if(j.premium)return;
-  const im=j.image_monthly_limit??0,iu=j.image_used??0,left=im-iu;
+  const im=j.image_monthly_limit==null?0:j.image_monthly_limit,iu=j.image_used==null?0:j.image_used,left=im-iu;
   if(left<=0&&im>0){
     limitToast(`Бесплатный лимит AI-изображений исчерпан (${iu} из ${im} в месяц). Для продолжения оформите Premium.`);
   } else if(left===1&&im>0){
     toast(`Остался последний бесплатный рисунок (${iu} из ${im} за месяц)`);
   }
- }catch{}
+ }catch(e){}
 }
 let authMode="login";
 function setAuthMode(mode){
@@ -218,8 +220,35 @@ async function load(){
   $("me").textContent=`${j.email} · ${j.premium?"Premium":"Free"} · ${j.email_verified?"email подтверждён":"email не подтверждён"} · ${video}`;
   $("verifyHint").textContent=!j.email_verified?"Письмо с подтверждением нужно открыть в вашей почте. Если письмо не пришло, запросите его повторно.":"Email подтверждён.";
   $("resendVerify").style.display=(!j.email_verified&&j.email_verification_enabled!==false)?"block":"none";
- }catch{$("me").textContent="Не удалось проверить статус"}
+ }catch(e){$("me").textContent="Не удалось проверить статус"}
 }
+async function checkPaymentReturn(){
+ const params=new URLSearchParams(location.search);
+ if(params.get("payment")!=="return")return;
+ const orderId=parseInt(params.get("order_id")||"0",10);
+ history.replaceState(null,"",location.pathname);
+ if(!orderId)return;
+ const poll=async()=>{
+  try{
+   const o=await fetch(`/api/payment/order/${orderId}`).then(r=>r.json()).catch(()=>null);
+   if(o&&o.status==="paid"){
+    if(o.payment_type==="premium"){await load();toast("✓ Оплата прошла — Premium активирован")}
+    else toast("✓ Оплата прошла — продолжайте на странице AI Видео");
+    return true;
+   }
+   if(o&&(o.status==="canceled"||o.status==="failed")){toast("Оплата не была завершена — попробуйте снова");return true}
+  }catch(e){}
+  return false;
+ };
+ if(await poll())return;
+ toast("Платёж ещё подтверждается — обычно это пара минут");
+ let tries=0;
+ const timer=setInterval(async()=>{
+  tries++;
+  if(await poll()||tries>60)clearInterval(timer);
+ },5000);
+}
+checkPaymentReturn();
 async function resendVerification(){
  try{
   let r=await fetch("/api/auth/resend-verification",{method:"POST"}),j=await r.json().catch(()=>({}));
@@ -230,7 +259,7 @@ async function resendVerification(){
 const observer=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add("visible");observer.unobserve(e.target)}}),{threshold:.08});document.querySelectorAll(".reveal").forEach(e=>observer.observe(e));
 function showSelectedFile(input){
  const card=input.closest(".tool-card");
- if(!card||!input.files?.[0])return;
+ if(!card||!input.files||!input.files[0])return;
  card.classList.add("has-file");
  let preview=card.querySelector(".file-preview");
  if(!preview){preview=document.createElement("div");preview.className="file-preview";input.insertAdjacentElement("afterend",preview)}

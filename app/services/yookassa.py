@@ -10,7 +10,7 @@ def configured() -> bool:
     return bool(os.getenv("YOOKASSA_SHOP_ID") and os.getenv("YOOKASSA_SECRET_KEY") and os.getenv("PUBLIC_BASE_URL"))
 
 
-def create_payment(order_id: int, amount_rub: int) -> dict:
+def create_payment(order_id: int, amount_rub: float, description: str | None = None, return_path: str = "/", payment_type: str = "premium", project_id: int | None = None) -> dict:
     if not configured():
         raise RuntimeError("YooKassa is not configured")
     payload = {
@@ -18,10 +18,10 @@ def create_payment(order_id: int, amount_rub: int) -> dict:
         "capture": True,
         "confirmation": {
             "type": "redirect",
-            "return_url": f"{os.environ['PUBLIC_BASE_URL'].rstrip('/')}/?payment=return&order_id={order_id}",
+            "return_url": f"{os.environ['PUBLIC_BASE_URL'].rstrip('/')}{return_path}{'&' if '?' in return_path else '?'}payment=return&order_id={order_id}",
         },
-        "description": f"FileForge Premium, заказ №{order_id}",
-        "metadata": {"order_id": str(order_id)},
+        "description": description or f"FileForge Premium, заказ №{order_id}",
+        "metadata": {"order_id": str(order_id), "payment_type": payment_type, **({"project_id": str(project_id)} if project_id is not None else {})},
     }
     r = requests.post(
         f"{API}/payments",

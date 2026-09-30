@@ -4,7 +4,7 @@ RUN set -eux; \
     for i in 1 2 3 4 5; do \
       apt-get update -o Acquire::Retries=10 && \
       apt-get install -y --no-install-recommends -o Acquire::Retries=10 \
-        poppler-utils djvulibre-bin pdf2djvu ca-certificates && \
+        poppler-utils djvulibre-bin pdf2djvu ffmpeg ca-certificates && \
       rm -rf /var/lib/apt/lists/* && \
       exit 0; \
       echo "apt attempt $i failed; retrying..." >&2; \

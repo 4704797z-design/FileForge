@@ -8,6 +8,14 @@ FileForge is a self-hosted web service for common image and document operations.
 
 ## Features
 
+### AI Video — creation from idea to final cut
+- Separate responsive workspace at **`/ai-video`**: a director chat plus a project panel with scene-by-scene real statuses.
+- The Mixen text model turns an idea into an editable script, narration, subtitles draft and 3–6 scene prompts. The user approves the plan before any video generation starts.
+- Each approved scene is submitted as its own external Mixen Wan job. FileForge polls the provider, stores per-scene status/error, offers retry for a failed scene, and joins completed MP4 fragments with ffmpeg.
+- Projects, scenes and chat messages are stored in SQLite and every project/preview/download endpoint checks its owner.
+- AI Video is Premium-only and atomically reserves the total generated scene seconds before starting; it never runs a local video model or exposes `MIXEN_API_KEY` to the browser.
+- Voice-over synthesis and subtitle burn-in require a separately configured external TTS/caption provider; the current version stores the generated narration/subtitle draft but does not present either as rendered audio/subtitles.
+
 ### Image tools
 - **AI-генерация изображений** по текстовому описанию (Gemini Image через Mixen, `/api/image/generate`).
 - **AI-редактирование изображений** по текстовому описанию (Mixen `/images/edits`, `/api/image/ai-edit`).
@@ -34,9 +42,9 @@ FileForge is a self-hosted web service for common image and document operations.
 ### Premium / integrations
 - Premium order creation endpoint.
 - Payment webhook with optional HMAC verification.
-- Premium default price: 999 ₽ / 30 days.
-- Premium includes 30 weighted AI-video seconds; 720p consumes 1 second per generated second, while 1080p consumes 3.
-- Free AI-video trial is limited to 5 seconds per account.
+- Premium default price: 450 ₽ / 30 days.
+- AI Video projects are charged separately after scenario planning: provider cost for all scene seconds plus the FileForge service fee.
+- The existing single-scene AI-video trial remains limited to 5 seconds per account.
 - Optional AI upscale adapter.
 - Seedance 2.0 photo animation through fal.ai queue API.
 
@@ -266,10 +274,10 @@ Never send API keys, payment credentials, passwords, or private tokens through c
 The MVP no longer treats AI-video as an unlimited operation count. Video usage is metered in weighted seconds because the provider bills by generated video duration.
 
 - **Free:** one 5-second AI-video trial per account, 720p.
-- **Premium:** **999 ₽ / 30 days**, with **30 weighted AI-video seconds** included.
-- 720p consumes 1 AI-second per generated second.
-- 1080p consumes 3 AI-seconds per generated second.
-- When the AI-video balance reaches zero, new AI-video jobs are rejected instead of silently creating provider costs.
+- **Premium:** **450 ₽ / 30 days** for Premium account features and ordinary-operation limits.
+- AI Video projects are paid separately after their scene plan is known.
+- The quote is: total scene seconds × `AI_VIDEO_MIXEN_RUB_PER_SECOND` + `AI_VIDEO_SERVICE_FEE_RUB`.
+- With the configured Wan 3.0 rate, this is 6.74 ₽ per generated second plus a 30 ₽ FileForge service fee for the project.
 - Ordinary file operations keep their separate daily limits.
 
 These defaults are configurable with PREMIUM_PRICE_RUB, PREMIUM_VIDEO_SECONDS and FREE_VIDEO_TRIAL_SECONDS.

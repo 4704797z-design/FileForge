@@ -277,3 +277,28 @@ def edit_image(data: bytes, content_type: str | None, prompt: str) -> bytes:
         raise RuntimeError("Mixen image response has no image data")
     log.info("[AI_RESPONSE] image edit ok (%d bytes)", len(b64))
     return base64.b64decode(b64)
+
+
+def chat(messages: list[dict], response_format: dict | None = None) -> str:
+    """Run the project director through Mixen's OpenAI-compatible chat API."""
+    if not configured():
+        raise RuntimeError("Mixen provider is not configured")
+    model = os.getenv("MIXEN_TEXT_MODEL", "").strip()
+    if not model:
+        raise RuntimeError("Mixen text model is not configured")
+    payload = {"model": model, "messages": messages, "temperature": 0.7}
+    if response_format:
+        payload["response_format"] = response_format
+    log.info("[AI_REQUEST] POST %s/chat/completions model=%s", API_BASE, model)
+    response = _post_with_retry(f"{API_BASE}/chat/completions", headers=_headers(), json=payload)
+    if response.status_code >= 400:
+        detail = _api_error(response)
+        log.error("[AI_RESPONSE] chat failed %d: %s", response.status_code, detail)
+        raise RuntimeError(f"Mixen API {response.status_code}: {detail}")
+    try:
+        content = response.json()["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError, ValueError) as e:
+        raise RuntimeError("Mixen chat response has no message content") from e
+    if not isinstance(content, str) or not content.strip():
+        raise RuntimeError("Mixen chat response is empty")
+    return content.strip()
