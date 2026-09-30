@@ -12,7 +12,7 @@ from itsdangerous import URLSafeTimedSerializer
 from PIL import Image,ImageEnhance
 from pypdf import PdfReader,PdfWriter
 from pdf2image import convert_from_bytes
-from app.services import mixen,yookassa,email as email_service
+from app.services import mixen,yookassa,text_ai,email as email_service
 
 APP=FastAPI(title="FileForge",version="6.0")
 DATA=Path(os.getenv("DATABASE","/data/fileforge.db"));DATA.parent.mkdir(parents=True,exist_ok=True)
@@ -165,7 +165,7 @@ def project_data(c,p):
 
 def director_plan(idea,fmt,duration,revision=""):
  prompt=f"Idea: {idea}\nFormat: {fmt}\nTarget duration: {duration} seconds. {revision}".strip()
- raw=mixen.chat([{"role":"system","content":AI_VIDEO_SYSTEM},{"role":"user","content":prompt}],{"type":"json_object"})
+ raw=text_ai.chat([{"role":"system","content":AI_VIDEO_SYSTEM},{"role":"user","content":prompt}],{"type":"json_object"})
  try:plan=json.loads(raw)
  except ValueError as e:raise RuntimeError("AI director returned invalid plan") from e
  scenes=plan.get("scenes")
